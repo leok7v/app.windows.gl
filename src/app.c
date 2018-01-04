@@ -18,6 +18,9 @@
 #include "mem.h"
 #include "resource.h"
 
+#define gettid() (GetThreadId((void*)0))
+#define trace(format, ...) printf(__FILE__ "(%d) [%d] " format "\n", __LINE__, gettid(), ## __VA_ARGS__)
+
 BEGIN_C
 
 #define GL_FRAMEBUFFER_SRGB_EXT           0x8DB9
@@ -37,6 +40,16 @@ static GLuint font_tex;
 static float scale[2] = { 24.0f, 14.0f };
 
 static int sf[6] = { 0,1,2, 0,1,2 };
+
+static void glCheck() {
+#ifdef _DEBUG
+    int error = glGetError();
+    if (error != 0) {
+        trace("glGetError()=%d", error);
+        exit(1);
+    }
+#endif
+}
 
 static void load_fonts(void) {
     stbtt_pack_context pc;
@@ -81,29 +94,30 @@ static void load_fonts(void) {
 static int black_on_white;
 
 static void draw_init() {
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_TEXTURE_2D);
-    glDisable(GL_LIGHTING);
-    glDisable(GL_DEPTH_TEST);
-    glViewport(0,0,sx,sy);
+    glDisable(GL_CULL_FACE); glCheck();
+    glDisable(GL_TEXTURE_2D); glCheck();
+    glDisable(GL_LIGHTING); glCheck();
+    glDisable(GL_DEPTH_TEST); glCheck();
+    glViewport(0, 0, sx, sy); glCheck();
     if (black_on_white) {
-        glClearColor(255, 255, 255, 0);
+        glClearColor(255, 255, 255, 0); glCheck();
     } else {
-        glClearColor(0, 0, 0, 0);
+        glClearColor(0, 0, 0, 0); glCheck();
     }
-    glClear(GL_COLOR_BUFFER_BIT);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
+    glClear(GL_COLOR_BUFFER_BIT); glCheck();
+    glMatrixMode(GL_PROJECTION); glCheck();
+    glLoadIdentity(); glCheck();
     float projection_matrix[16] = { 0 };
-    glOrtho2D_np(projection_matrix, 0, (float)sx, (float)sy, 0); // near -1 far +1
-    glMultMatrixf(projection_matrix);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    glOrtho2D_np(projection_matrix, 0, (float)sx, (float)sy, 0); glCheck(); // near -1 far +1
+    glMultMatrixf(projection_matrix); glCheck();
+    glMatrixMode(GL_MODELVIEW); glCheck();
+    glLoadIdentity(); glCheck();
 }
 
-#define QUADS 1
+//#define QUADS 
+//#define TRIANGLES
 
-#if QUADS
+#ifdef QUADS
 
 void drawBoxTC(float x0, float y0, float x1, float y1, float s0, float t0, float s1, float t1) {
    glTexCoord2f(s0,t0); glVertex2f(x0,y0);
@@ -115,15 +129,15 @@ void drawBoxTC(float x0, float y0, float x1, float y1, float s0, float t0, float
 #else
 
 static void drawBoxTC(float x0, float y0, float x1, float y1, float s0, float t0, float s1, float t1) {
-#if TRIANGLES
-    glTexCoord2f(s0,t0); glVertex2f(x0,y0);
-    glTexCoord2f(s1,t0); glVertex2f(x1,y0);
-    glTexCoord2f(s1,t1); glVertex2f(x1,y1);
+#ifdef TRIANGLES
+    glTexCoord2f(s0, t0); glVertex2f(x0, y0);
+    glTexCoord2f(s1, t0); glVertex2f(x1, y0);
+    glTexCoord2f(s1, t1); glVertex2f(x1, y1);
 
-    glTexCoord2f(s1,t1); glVertex2f(x1,y1);
-    glTexCoord2f(s0,t1); glVertex2f(x0,y1);
-    glTexCoord2f(s0,t0); glVertex2f(x0,y0);
-#endif
+    glTexCoord2f(s1, t1); glVertex2f(x1, y1);
+    glTexCoord2f(s0, t1); glVertex2f(x0, y1);
+    glTexCoord2f(s0, t0); glVertex2f(x0, y0);
+#else
     GLfloat vertices[] = { x0,y0, x1,y0, x1,y1, x1,y1, x0,y1, x0,y0};
     GLfloat texture[]  = { s0,t0, s1,t0, s1,t1, s1,t1, s0,t1, s0,t0};
     glEnableClientState(GL_VERTEX_ARRAY);
@@ -133,6 +147,7 @@ static void drawBoxTC(float x0, float y0, float x1, float y1, float s0, float t0
     glDrawArrays(GL_TRIANGLES, 0, 6); 
     glDisableClientState(GL_TEXTURE_COORD_ARRAY);
     glDisableClientState(GL_VERTEX_ARRAY);
+#endif
 }
 
 #endif
@@ -144,15 +159,17 @@ static void print(float x, float y, int font, char *text) {
    glBindTexture(GL_TEXTURE_2D, font_tex);
 #ifdef QUADS
    glBegin(GL_QUADS);
-#else
-// glBegin(GL_TRIANGLES);
+#elif defined(TRIANGLES)
+   glBegin(GL_TRIANGLES);
 #endif
    while (*text) {
       stbtt_aligned_quad q;
       stbtt_GetPackedQuad(chardata[font], BITMAP_W, BITMAP_H, *text++, &x, &y, &q, font ? 0 : integer_align);
       drawBoxTC(q.x0,q.y0,q.x1,q.y1, q.s0,q.t0,q.s1,q.t1);
    }
+#if defined(TRIANGLES) || defined(QUADS)
    glEnd();
+#endif
 }
 
 static int font=2;
@@ -162,15 +179,43 @@ static int srgb;
 static float rotate_t, translate_t;
 static int show_tex;
 
-static void draw_world(void) {
+
+static void draw_bitmap2(HDC dc, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh, int stride, GLuint texture_id, byte* buffer, int format) {
+    RECT rc = {0};          
+    GetClientRect(WindowFromDC(dc), &rc);
+//  int width = rc.right - rc.left; 
+    int height = rc.bottom-rc.top;
+    glViewport(dx, height - 1 - dy - dh, dw, dh); glCheck();
+    glLoadIdentity(); glCheck();
+    glPixelZoom(1.0, 1.0); glCheck();
+    glBindTexture(GL_TEXTURE_2D, texture_id); glCheck();
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, stride); glCheck();
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, sx); glCheck();
+    // can use: buffer + (sx + sy * stride) instead of GL_UNPACK_ROW_LENGTH and GL_UNPACK_SKIP_PIXELS
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, sy); glCheck();
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sw, sh, format, GL_UNSIGNED_BYTE, buffer); glCheck();
+    glMatrixMode(GL_TEXTURE); glCheck();
+    glScalef(1.0f / sw, 1.0f / sh, 1); glCheck();
+    glBegin(GL_QUADS);  // Beginning of drawing frame
+    glTexCoord2i( 0, sh);  glVertex2f(-1, -1);	// bottom left
+    glTexCoord2i(sw, sh);  glVertex2f( 1, -1);	// bottom right
+    glTexCoord2i(sw,  0);  glVertex2f( 1,  1);	// top right
+    glTexCoord2i( 0,  0);  glVertex2f(-1,  1);	// top left
+    glEnd(); glCheck();
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); glCheck();
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0); glCheck();
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0); glCheck();
+}
+
+static void draw_world() {
    int sfont = sf[font];
    float x = 20;
-   glEnable(GL_BLEND);
-   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+   glEnable(GL_BLEND); glCheck();
+   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); glCheck();
    if (black_on_white) {
-      glColor3f(0,0,0);
+      glColor3f(0, 0, 0);
    } else {
-      glColor3f(1,1,1);
+      glColor3f(1, 1, 1);
    }
    print(80, 30, sfont, "Controls:");
    print(100, 60, sfont, "S: toggle font size");
@@ -199,19 +244,19 @@ static void draw_world(void) {
       print(100, 325, sfont, "1:1 text, one texel = one pixel");
    }
    if (show_tex) {
-      glBegin(GL_QUADS);
+      glBegin(GL_QUADS); glCheck();
       drawBoxTC(200,400, 200 + BITMAP_W, 300 + BITMAP_H, 0, 0, 1, 1);
-      glEnd();
+      glEnd(); glCheck();
    } else {
-      glMatrixMode(GL_MODELVIEW);
-      glTranslatef(200,350,0);
+      glMatrixMode(GL_MODELVIEW); glCheck();
+      glTranslatef(200, 350, 0); glCheck();
       if (translating) {
          x += fmod(translate_t*8,30);
       }
       if (rotating) {
-         glTranslatef(100,150,0);
-         glRotatef(rotate_t*2,0,0,1);
-         glTranslatef(-100,-150,0);
+         glTranslatef(100, 150, 0); glCheck();
+         glRotatef(rotate_t*2, 0, 0, 1); glCheck();
+         glTranslatef(-100, -150, 0); glCheck();
       }
       print(x,100, font, "This is a test");
       print(x,130, font, "Now is the time for all good men to come to the aid of their country.");
