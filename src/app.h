@@ -6,6 +6,9 @@
 #include "mem.h"
 */
 
+#define gettid() (GetThreadId((void*)0))
+#define trace(format, ...) printf(__FILE__ "(%d) [%d] " format "\n", __LINE__, gettid(), ## __VA_ARGS__)
+
 typedef struct app_size_s {
     int w;     int h; 
     int min_w; int min_h; 
@@ -15,6 +18,12 @@ typedef struct app_size_s {
 #ifdef IMPLEMENT_APP
 
 BEGIN_C
+
+enum {
+    NANOSECONDS_IN_MICROSECOND = 1000,
+    NANOSECONDS_IN_MILLISECOND = NANOSECONDS_IN_MICROSECOND * 1000,
+    NANOSECONDS_IN_SECOND = NANOSECONDS_IN_MILLISECOND * 1000
+};
 
 int  app_main(void* context, int argc, const char** argv);
 void app_size(app_size_t* sizes);
@@ -52,32 +61,58 @@ static HGLRC glrc;
 static HCURSOR CURSOR_ARROW;
 static HCURSOR CURSOR_WAIT;
 
+double time_in_milliseconds() {
+    static int64_t freq = 0;
+    static int64_t start = 0;
+    LARGE_INTEGER li;
+    QueryPerformanceCounter(&li);
+    if (freq == 0) {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        freq = f.QuadPart;
+        start = li.QuadPart - freq; 
+    }
+    return (li.QuadPart - start) * 1000.0 / freq;
+}
+
 static int set_pixel_format(HWND win, int color_bits, int alpha_bits, int depth_bits, int stencil_bits, int accum_bits) {
-   HDC dc = GetDC(win);
-   PIXELFORMATDESCRIPTOR pfd = { sizeof(pfd) };
-   pfd.nVersion = 1;
-   pfd.dwFlags = PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER;
-   pfd.dwLayerMask = PFD_MAIN_PLANE;
-   pfd.iPixelType = PFD_TYPE_RGBA;
-   pfd.cColorBits = (byte)color_bits;
-   pfd.cAlphaBits = (byte)alpha_bits;
-   pfd.cDepthBits = (byte)depth_bits;
-   pfd.cStencilBits = (byte)stencil_bits;
-   pfd.cAccumBits = (byte)accum_bits;
-   int pixel_format = ChoosePixelFormat(dc, &pfd);
-   if (pixel_format == 0) {
-       return false;
-   }
-   if (!DescribePixelFormat(dc, pixel_format, sizeof(PIXELFORMATDESCRIPTOR), &pfd)) {
-      return false;
-   }
-   SetPixelFormat(dc, pixel_format, &pfd);
-   return true;
+    trace(">set_pixel_format %.1f", time_in_milliseconds());
+    HDC dc = GetDC(win);
+    PIXELFORMATDESCRIPTOR pfd = { sizeof(pfd) };
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER;
+    pfd.dwLayerMask = PFD_MAIN_PLANE;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits = (byte)color_bits;
+    pfd.cAlphaBits = (byte)alpha_bits;
+    pfd.cDepthBits = (byte)depth_bits;
+    pfd.cStencilBits = (byte)stencil_bits;
+    pfd.cAccumBits = (byte)accum_bits;
+    trace(">ChoosePixelFormat %.1f", time_in_milliseconds());
+    int pixel_format = ChoosePixelFormat(dc, &pfd);
+    trace("<ChoosePixelFormat %.1f", time_in_milliseconds());
+    if (pixel_format == 0) {
+        return false;
+    }
+    trace(">DescribePixelFormat %.1f", time_in_milliseconds());
+    if (!DescribePixelFormat(dc, pixel_format, sizeof(PIXELFORMATDESCRIPTOR), &pfd)) {
+        return false;
+    }
+    trace("<DescribePixelFormat %.1f", time_in_milliseconds());
+    SetPixelFormat(dc, pixel_format, &pfd);
+    trace("<set_pixel_format %.1f", time_in_milliseconds());
+    return true;
 }
 
 static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_NCDESTROY) { return DefWindowProcA(window, msg, wp, lp); } // because GetWindowLongPtr won't work
+//  char buffer[128];
+//  sprintf(buffer, "0x%04X\n", msg);
+//  OutputDebugString(buffer);
     switch (msg) {
+        case WM_GETICON: 
+//          OutputDebugString("WM_GETICON\n"); 
+            break;
         case WM_GETMINMAXINFO: {
             MINMAXINFO* minmaxinfo = (MINMAXINFO*)lp;
             app_size_t sizes = {0};
@@ -93,6 +128,8 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
         case WM_DESTROY      : PostQuitMessage(0); break;
         case WM_CHAR         : app_keyboard(0, 0, (int)wp); break;
         case WM_PAINT        : {
+//          OutputDebugString("WM_PAINT\n");
+            wglMakeCurrent(GetDC(window), glrc);
             PAINTSTRUCT ps = {null};
             BeginPaint(window, &ps);
 //          SelectObject(ps.hdc, GetStockObject(WHITE_BRUSH));
@@ -102,7 +139,9 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
             SwapBuffers(ps.hdc);
             EndPaint(window, &ps);
         }
-        case WM_ERASEBKGND   : return true;
+        case WM_ERASEBKGND   : 
+//          OutputDebugString("WM_ERASEBKGND\n"); 
+            return true;
 //      case WM_SETCURSOR    : SetCursor(window->cursor); break;
 /*
         case WM_MOUSEMOVE    :
@@ -119,7 +158,14 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
         case WM_KEYUP        : application.on_key_up(app, window, (int)wp); break;
         case WM_TIMER        : application.on_timer(app, window, (int)wp); break;
 */
+        case WM_TIMER        : OutputDebugString("WM_TIMER\n"); break;
+        case SPI_SETSNAPTODEFBUTTON : OutputDebugString("SPI_SETSNAPTODEFBUTTON\n"); break;
+        case WM_NCPAINT: 
+//          OutputDebugString("WM_NCPAINT\n"); 
+            break;
         case WM_CREATE: {
+            trace("WM_CREATE %.1f", time_in_milliseconds());
+
             static const int color_bits = 24;
             static const int alpha_bits = 0;
             static const int depth_bits = 24;
@@ -159,6 +205,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
 }
 
 static void create_window() {
+    trace(">create_window %.1f", time_in_milliseconds());
     CURSOR_ARROW = LoadCursor(null, IDC_ARROW);
     CURSOR_WAIT  = LoadCursor(null, IDC_WAIT);
     WNDCLASSA wc = {0};
@@ -191,6 +238,7 @@ static void create_window() {
     } else {
         ExitProcess(ERROR_FATAL_APP_EXIT);
     }
+    trace("<create_window %.1f", time_in_milliseconds());
 }
 
 static const char BACKSLASH = '\\';
@@ -259,12 +307,16 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ char*, _In_ int show
     };
     if (_dup2(fd, 1) != 0) { assert(false); };
     if (_dup2(fd, 2) != 0) { assert(false); };
+    setbuf(stdout, NULL);
+    setbuf(stderr, NULL);
     char buffer[16 * 1024 + 1];
+    trace("%.1f", time_in_milliseconds());
     PostThreadMessage(GetCurrentThreadId(), 0xC001, 0, 0);
     while (GetMessage(&msg, null, 0, 0)) {
         DWORD available = 0;
         if (PeekNamedPipe(pipe_stdout_read, buffer, sizeof(buffer) - 1, null, &available, null) && available > 0) {
 //          sprintf(buffer, "available=%d\n", available);
+//          OutputDebugStringA(buffer);
             DWORD read = 0;
             if (ReadFile(pipe_stdout_read, buffer, sizeof(buffer) - 1, &read, null) && read > 0) {
                 buffer[read] = 0;

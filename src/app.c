@@ -18,8 +18,6 @@
 #include "mem.h"
 #include "resource.h"
 
-#define gettid() (GetThreadId((void*)0))
-#define trace(format, ...) printf(__FILE__ "(%d) [%d] " format "\n", __LINE__, gettid(), ## __VA_ARGS__)
 
 BEGIN_C
 
@@ -51,6 +49,7 @@ static void glCheck() {
 #endif
 }
 
+
 static void load_fonts(void) {
     stbtt_pack_context pc;
 /*
@@ -71,6 +70,7 @@ static void load_fonts(void) {
     byte* ttf_buffer = (byte*)LockResource(resource);
     int bytes = (int)SizeofResource(module, resource_info);
     stbtt_PackBegin(&pc, temp_bitmap[0], BITMAP_W, BITMAP_H, 0, 1, NULL);
+    double time = time_in_milliseconds();
     for (int i = 0; i < 2; i++) {
         stbtt_PackSetOversampling(&pc, 1, 1);
         stbtt_PackFontRange(&pc, ttf_buffer, 0, scale[i], 32, 95, chardata[i*3+0]+32);
@@ -80,6 +80,7 @@ static void load_fonts(void) {
         stbtt_PackFontRange(&pc, ttf_buffer, 0, scale[i], 32, 95, chardata[i*3+2]+32);
     }
     stbtt_PackEnd(&pc);
+    trace("%.1f", time_in_milliseconds() - time);
     UnlockResource(resource);
 //  mem_unmap(ttf_buffer, bytes);
 
@@ -327,10 +328,12 @@ void app_pointer(int state, int index, int x, int y, float pressure, float proxi
 
 int app_main(void* context, int argc, const char** argv) {
     (void)context; (void)argc; (void)argv;
-    printf("Hello Windows!\n");         // OutputDebugString
-    fprintf(stderr, "Hello sdterr\n");  // OutputDebugString
-    _flushall();
+    printf("Hello Windows!\n");       
+    fprintf(stderr, "Hello sdterr\n");
+//  _flushall();
+    trace("Hello trace\n");         
     load_fonts();
+//  _flushall();
 //  app_exit(153);
     return 0;
 }
