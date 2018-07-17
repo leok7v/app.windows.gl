@@ -509,10 +509,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\src\app.c" />
+    <ClCompile Include="..\src\startup.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\res\resource.h" />
     <ClInclude Include="..\src\app.h" />
+    <ClInclude Include="..\src\app_windows.h" />
+    <ClInclude Include="..\src\inc_ms_win.h" />
     <ClInclude Include="..\src\mem.h" />
     <ClInclude Include="..\src\ogl.h" />
     <ClInclude Include="..\src\stb_rect_pack.h" />

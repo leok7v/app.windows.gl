@@ -16,7 +16,7 @@
 #include <ctype.h>
 #include <string.h>
 #include <errno.h>
-#ifndef WINDOWS
+#ifndef _MSC_VER
 #include <unistd.h>
 #include <sys/fcntl.h>
 #include <sys/types.h>
@@ -39,11 +39,16 @@
 #endif
 #endif
 
-#if defined(byte) &&  defined(WINDOWS)
+#if defined(byte) &&  defined(_MSC_VER)
 #define byte BYTE
 #else
 #define byte uint8_t
 #endif
+
+#ifdef _MSC_VER 
+#define thread_local_storage __declspec(thread)
+#endif
+#define countof(a) (sizeof((a)) / sizeof((a)[0]))
 
 #ifdef _MSC_VER // "extern" because of: https://connect.microsoft.com/VisualStudio/Feedback/Details/1587892
 #define static_init__(n, line) void _init_ ## n ## _ ## line(void); extern void (*_init_ ## n ## _ ## line ## _)(void); __pragma(section(".CRT$XCU", read)) __declspec(allocate(".CRT$XCU")) void (*_init_ ## n ## _ ## line ## _)(void) = _init_ ## n ## _ ## line; void _init_##n ## _ ## line(void)

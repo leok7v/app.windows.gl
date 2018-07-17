@@ -16,6 +16,8 @@
     <ClInclude Include="..\src\mem.h" />
     <ClInclude Include="..\src\std.h" />
     <ClInclude Include="..\src\ogl.h" />
+    <ClInclude Include="..\src\app_windows.h" />
+    <ClInclude Include="..\src\inc_ms_win.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\res\app.rc">
@@ -29,6 +31,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\app.c" />
+    <ClCompile Include="..\src\startup.c" />
   </ItemGroup>
   <ItemGroup>
     <Font Include="..\res\LiberationMono-Regular.ttf">

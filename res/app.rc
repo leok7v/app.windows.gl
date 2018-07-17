@@ -1,14 +1,9 @@
-//Microsoft Developer Studio generated resource script.
-//
 #include "resource.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
 #define LANG_ENGLISH                     0x09
 #define SUBLANG_ENGLISH_US               0x01    // English (USA)
 #undef APSTUDIO_READONLY_SYMBOLS
-
-/////////////////////////////////////////////////////////////////////////////
-// English (U.S.) resources
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
 #ifdef _WIN32
@@ -30,12 +25,12 @@ BEGIN
     "\0"
 END
 #endif    // APSTUDIO_INVOKED
-IDI_ICON               ICON    DISCARDABLE     "..\\res\\app.ico"
+IDI_ICON                ICON    DISCARDABLE     "../res/app.ico"
 #endif    // English (U.S.) resources
-IDR_MONO_FONT_BOLD          RCDATA                  "..\\res\\LiberationMono-Bold.ttf"
-IDR_MONO_FONT_BOLD_ITALIC   RCDATA                  "..\\res\\LiberationMono-BoldItalic.ttf"
-IDR_MONO_FONT_ITALIC        RCDATA                  "..\\res\\LiberationMono-Italic.ttf"
-IDR_MONO_FONT               RCDATA                  "..\\res\\LiberationMono-Regular.ttf"
+MONO_FONT_BOLD          RCDATA                  "../res/LiberationMono-Bold.ttf"
+MONO_FONT_BOLD_ITALIC   RCDATA                  "../res/LiberationMono-BoldItalic.ttf"
+MONO_FONT_ITALIC        RCDATA                  "../res/LiberationMono-Italic.ttf"
+MONO_FONT               RCDATA                  "../res/LiberationMono-Regular.ttf"
 
 #ifndef APSTUDIO_INVOKED
 #endif 
