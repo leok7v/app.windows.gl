@@ -66,7 +66,7 @@ static void load_fonts(app_t* a) {
     gl_check(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
 }
 
-static int black_on_white = true;
+static int black_on_white;
 
 static void draw_init(int w, int h) {
     gl_check(glDisable(GL_CULL_FACE));
@@ -254,8 +254,7 @@ static void paint(app_t* a, int x, int y, int w, int h) {
 
 static void keyboard(app_t* a, int state, int key, int character) {
     (void)(state, key);
-    printf("ch=%c %d 0x%02X\n", character, character, character);
-    _flushall();
+    traceln("ch=%c %d 0x%02X\n", character, character, character);
     if (character == 'q' || character == 'Q') {
         a->quit(a, 0);
     }
@@ -313,14 +312,14 @@ void app_init(app_t* a) {
     app->end = end;
     app->x = -1;
     app->y = -1;
-    app->w = 640;
-    app->h = 480;
+    app->w = 1024;
+    app->h = 768;
     app->min_w = 640;
     app->min_h = 480;
-    app->max_w = 4096;
-    app->max_w = 4096;
+    app->max_w = 1920;
+    app->max_w = 1080;
     app->title = "App";
-    app->visibility = WINDOW_SHOW;
+    app->visibility = VISIBILITY_SHOW;
     app->redirect_std = true;
 }
 

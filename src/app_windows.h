@@ -66,6 +66,18 @@ static int set_pixel_format(HWND win, int color_bits, int alpha_bits, int depth_
     return b;
 }
 
+static int visibility_to_show_command(int visibility) {
+    switch (visibility) {
+        case VISIBILITY_HIDE: return SW_HIDE;
+        case VISIBILITY_SHOW: return SW_SHOWNORMAL;
+        case VISIBILITY_MIN : return SW_SHOWMINIMIZED;
+        case VISIBILITY_MAX : return SW_SHOWMAXIMIZED;
+        case VISIBILITY_FULL: return SW_SHOWMAXIMIZED; // TODO: https://stackoverflow.com/questions/2382464/win32-full-screen-and-hiding-taskbar
+        default: traceln("unexpected visibility=%d defaulted to SW_SHOWNORMAL", visibility);
+            return SW_SHOWNORMAL;
+    }
+}
+
 static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp) {
     context_t* context = (context_t*)GetPropA(window, "app.context");
     app_t* app = context != null ? &context->app : null;
@@ -88,11 +100,11 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
             RECT rc;
             BeginPaint(window, &ps);
             SelectObject(ps.hdc, GetStockObject(NULL_BRUSH));
-            GetUpdateRect(window, &rc, false);
+            GetClientRect(window, &rc);
             if (!wglMakeCurrent(ps.hdc, context->glrc)) {
                 traceln("%d %s", GetLastError(), strerr(GetLastError()));
             }
-            app->paint(app, rc.top, rc.left, rc.right - rc.left, rc.bottom - rc.top);
+            app->paint(app, 0, 0, rc.right - rc.left, rc.bottom - rc.top);
             if (!SwapBuffers(ps.hdc)) {
                 traceln("%d %s", GetLastError(), strerr(GetLastError()));
             }
@@ -171,7 +183,7 @@ static void create_window(context_t* context) {
         ExitProcess(ERROR_FATAL_APP_EXIT);
     } else {
         SetPropA(context->window, "app.context", context);
-        ShowWindow(context->window, SW_HIDE);
+        ShowWindow(context->window, visibility_to_show_command(context->app.visibility));
     }
 }
 
@@ -360,7 +372,6 @@ int app_run(void (*init)(app_t* app), int argc, const char** argv, int visibilit
             if (!b) { ExitProcess(0x1BADF00D); }
             app->begin(app);
             SetWindowTextA(context.window, app->title != null ? app->title : "");
-            ShowWindow(context.window, app->visibility ? SW_SHOW : SW_HIDE);
         } else {
             TranslateMessage(&msg); // WM_KEYDOWN/UP -> WM_CHAR, WM_CLICK, WM_CLICK -> WM_DBLCLICK ...
             DispatchMessage(&msg);

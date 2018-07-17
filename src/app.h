@@ -20,11 +20,11 @@ extern FILE* stdtrace; // implemented by platform can be /dev/null
 typedef struct app_s app_t;
 
 enum {
-    WINDOW_HIDE = 1, // window will become invisible
-    WINDOW_SHOW = 2, // restore normal window at (x, y, w, h) position
-    WINDOW_MAX  = 3, // maximize window to the size of the nearest monitor
-    WINDOW_MIN  = 4, // window will become minimized
-    WINDOW_FULL = 5  // full screen window on the nearest monitor
+    VISIBILITY_HIDE = 1, // window will become invisible
+    VISIBILITY_SHOW = 2, // restore normal window at (x, y, w, h) position
+    VISIBILITY_MAX  = 3, // maximize window to the size of the nearest monitor
+    VISIBILITY_MIN  = 4, // window will become minimized
+    VISIBILITY_FULL = 5  // full screen window on the nearest monitor
 };
 
 enum {                              // result:
