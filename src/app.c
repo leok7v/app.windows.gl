@@ -94,10 +94,10 @@ static void draw_init(int w, int h) {
 #if QUADS
 
 void drawBoxTC(float x0, float y0, float x1, float y1, float s0, float t0, float s1, float t1) {
-    gl_check(glTexCoord2f(s0, t0)); gl_check(glVertex2f(x0, y0));
-    gl_check(glTexCoord2f(s1, t0)); gl_check(glVertex2f(x1, y0));
-    gl_check(glTexCoord2f(s1, t1)); gl_check(glVertex2f(x1, y1));
-    gl_check(glTexCoord2f(s0, t1)); gl_check(glVertex2f(x0, y1));
+    glTexCoord2f(s0, t0); glVertex2f(x0, y0); // cannot and should not call gl_check() inside glBegin/glEnd
+    glTexCoord2f(s1, t0); glVertex2f(x1, y0);
+    glTexCoord2f(s1, t1); glVertex2f(x1, y1);
+    glTexCoord2f(s0, t1); glVertex2f(x0, y1);
 }
 
 #else
@@ -131,9 +131,9 @@ static void print(int x, int y, int font, const char *text) {
     gl_check(glEnable(GL_TEXTURE_2D));
     gl_check(glBindTexture(GL_TEXTURE_2D, font_tex));
 #ifdef QUADS
-    gl_check(glBegin(GL_QUADS));
+    glBegin(GL_QUADS);
 #else
-    gl_check(glBegin(GL_TRIANGLES));
+    glBegin(GL_TRIANGLES);
 #endif
     float fx = (float)x;
     float fy = (float)y;
@@ -192,7 +192,7 @@ static void draw_world(int w, int h) {
     if (show_tex) {
         glBegin(GL_QUADS);
         drawBoxTC(200, 400, 200 + BITMAP_W, 300 + BITMAP_H, 0, 0, 1, 1);
-        glEnd();
+        gl_check(glEnd());
     } else {
         glMatrixMode(GL_MODELVIEW);
         glTranslatef(200, 350, 0);
@@ -238,18 +238,18 @@ static void begin(app_t* a) {
 static void changed(app_t* a, int x, int y, int w, int h, int v) {}
 
 static void paint(app_t* a, int x, int y, int w, int h) {
+/*
     gl_check(glViewport(0, 0, w, h));
     gl_check(glClearColor(0.3f, 0.4f, 0.4f, 1.0f));
     gl_check(glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE))
     gl_check(glDepthMask(GL_TRUE))
     gl_check(glDrawBuffer(GL_BACK));
     gl_check(glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
-    gl_check(glBegin(GL_TRIANGLES));
+    glBegin(GL_TRIANGLES);
     gl_check(glEnd());
-/*
+*/
     draw_init(w, h);
     draw_world(w, h);
-*/
 }
 
 static void keyboard(app_t* a, int state, int key, int character) {

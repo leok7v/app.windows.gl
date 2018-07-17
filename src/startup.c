@@ -18,26 +18,27 @@ BEGIN_C
 
 static void init(app_t* a) { app_init(a); }
 
-int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ char*, _In_ int show_command) {
-    app_t app = {};
+
+static int show_command_to_visibility(int show_command) {
     switch (show_command) {
-        case SW_HIDE         : app.visibility = WINDOW_HIDE; break;
-        case SW_SHOWDEFAULT  : app.visibility = WINDOW_SHOW; break;
-        case SW_SHOWNORMAL   : app.visibility = WINDOW_SHOW; break;
-        case SW_SHOWMINIMIZED: app.visibility = WINDOW_MIN;  break;
-        case SW_SHOWMAXIMIZED: app.visibility = WINDOW_MAX;  break;
+        case SW_HIDE         : return WINDOW_HIDE;
+        case SW_SHOWDEFAULT  : return WINDOW_SHOW;
+        case SW_SHOWNORMAL   : return WINDOW_SHOW;
+        case SW_SHOWMINIMIZED: return WINDOW_MIN; 
+        case SW_SHOWMAXIMIZED: return WINDOW_MAX; 
         default: traceln("unexpected show_command=%d defaulted to WINDOW_SHOW", show_command);
-                               app.visibility = WINDOW_SHOW; break;
+            return WINDOW_SHOW;
     }
-    return (int)app_run(init); // argc = 0 and argv = null for WinMain /SUBSYSTEM:WINDOWS
+}
+
+
+int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ char*, _In_ int show_command) {
+    // argc = 0 and argv = null for WinMain /SUBSYSTEM:WINDOWS
+    return (int)app_run(init, 0, null, show_command_to_visibility(show_command));
 }
 
 int main(int argc, const char** argv) {
-    app_t app = {};
-    app.argc = argc;
-    app.argv = argv;
-    app_init(&app);
-    return app_run(init); // argc >= 1 and argv != null && argv[0] != null /SUBSYSTEM:CONSOLE
+    return (int)app_run(init, argc, argv, WINDOW_SHOW); // argc >= 1 and argv != null && argv[0] != null /SUBSYSTEM:CONSOLE
 }
 
 #elif defined(_OSX)

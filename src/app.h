@@ -76,6 +76,7 @@ typedef struct app_s {
 
 const char* strerr(int r); // extended platform specific strerror()
 void app_init(app_t* app); // implemented by application code called by startup
-int  app_run(void (*init)(app_t* app));  // implemented by platform code called by startup code
+// implemented by platform code called by startup code:
+int  app_run(void (*init)(app_t* app), int argc, const char** argv, int visibility);
 
 END_C

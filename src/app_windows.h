@@ -89,14 +89,13 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
             BeginPaint(window, &ps);
             SelectObject(ps.hdc, GetStockObject(NULL_BRUSH));
             GetUpdateRect(window, &rc, false);
-            HDC wdc = GetWindowDC(window);
-            wglMakeCurrent(wdc, context->glrc);
-            app->paint(app, rc.top, rc.left, rc.right - rc.left, rc.bottom - rc.top);
-            if (!SwapBuffers(wdc)) {
-                printf("%d %s", GetLastError(), strerr(GetLastError()));
+            if (!wglMakeCurrent(ps.hdc, context->glrc)) {
+                traceln("%d %s", GetLastError(), strerr(GetLastError()));
             }
-            printf("wdc=%p pdc=%p\n", wdc, ps.hdc);
-            ReleaseDC(window, wdc);
+            app->paint(app, rc.top, rc.left, rc.right - rc.left, rc.bottom - rc.top);
+            if (!SwapBuffers(ps.hdc)) {
+                traceln("%d %s", GetLastError(), strerr(GetLastError()));
+            }
             EndPaint(window, &ps);
         }
         case WM_ERASEBKGND   : return true;
@@ -183,7 +182,7 @@ static DWORD WINAPI logger(void* param) {
     while (!context->quiting) {
         DWORD available = 0;
         if (PeekNamedPipe(context->pipe_stdout_read, text, sizeof(text) - 1, null, &available, null) && available > 0) {
-//          sprintf(buffer, "available=%d\n", available);
+//          traceln("available=%d\n", available);
             DWORD read = 0;
             if (ReadFile(context->pipe_stdout_read, text, sizeof(text) - 1, &read, null) && read > 0) {
                 text[read] = 0;
@@ -292,7 +291,7 @@ static void app_invalidate_rectangle(app_t* a, int x, int y, int w, int h) {
     InvalidateRect(context->window, &rc, false);
 }
 
-int app_run(void (*init)(app_t* app)) {
+int app_run(void (*init)(app_t* app), int argc, const char** argv, int visibility) {
     context_t context = {};
     app_t* app = &context.app;
     app->quit  = app_quit;
@@ -303,8 +302,7 @@ int app_run(void (*init)(app_t* app)) {
     app->message_box = app_message_box;
     app->invalidate = app_invalidate;
     app->invalidate_rectangle = app_invalidate_rectangle;
-    int argc = app->argc;
-    const char** argv = app->argv;
+    app->visibility = visibility;
     bool console;
     if (argc == 0 && argv == null) {
         console = false;
@@ -320,6 +318,8 @@ int app_run(void (*init)(app_t* app)) {
         console = true;
         assertion(argc >= 1 && argv != null && argv[0] != null, "argc=%d", argc); // command line invocation
     }
+    app->argc = argc;
+    app->argv = argv;
     MSG msg = {};
     CreatePipe(&context.pipe_stdout_read, &context.pipe_stdout_write, null, 0);
     HANDLE std_out_handle = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -351,12 +351,10 @@ int app_run(void (*init)(app_t* app)) {
             static const int depth_bits = 24;
             static const int stencil_bits = 8;
             static const int accum_bits = 0;
-            HDC dc = GetWindowDC(context.window);
+            HDC dc = GetDC(context.window);
             bool b = set_pixel_format(context.window, color_bits, alpha_bits, depth_bits, stencil_bits, accum_bits);
             context.glrc = b ? wglCreateContext(dc) : null;
-            if (context.glrc != null) {
-                b = wglMakeCurrent(dc, context.glrc);
-            }
+            if (b && context.glrc != null) { b = wglMakeCurrent(dc, context.glrc); }
             ReleaseDC(context.window, dc);
             assertion(b, "wglCreateContext() failed: %s", strerr(GetLastError()));
             if (!b) { ExitProcess(0x1BADF00D); }
