@@ -192,11 +192,11 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
             SelectObject(ps.hdc, GetStockObject(NULL_BRUSH));
             GetClientRect(window, &rc);
             if (!wglMakeCurrent(ps.hdc, context->glrc)) {
-                traceln("%d %s", GetLastError(), strerr(GetLastError()));
+                assertion(false, "%d %s", GetLastError(), strerr(GetLastError()));
             }
             app->paint(app, 0, 0, rc.right - rc.left, rc.bottom - rc.top);
             if (!SwapBuffers(ps.hdc)) {
-                traceln("%d %s", GetLastError(), strerr(GetLastError()));
+                assertion(false, "%d %s", GetLastError(), strerr(GetLastError()));
             }
             EndPaint(window, &ps);
             break;
@@ -239,7 +239,6 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
                 app->presentation = PRESENTATION_MAXIMIZED; 
             } else  { 
                 app->presentation = context->full_screen ? PRESENTATION_FULL_SCREEN : PRESENTATION_NORMAL;
-//              traceln("WM_WINDOWPOSCHANGED: context->full_screen=%d presentation := %d", context->full_screen, app->presentation);
             }
             app->visible = IsWindowVisible(context->window);
             app->active = GetActiveWindow() == context->window;
@@ -580,7 +579,6 @@ static void app_notify(app_t* a) {
     bool minimized = presentation == PRESENTATION_MINIMIZED;
     bool maximized = presentation == PRESENTATION_MAXIMIZED;
     bool full_screen = presentation == PRESENTATION_FULL_SCREEN;
-    //  traceln("context->full_screen=%d full_screen=%d", context->full_screen, full_screen);
     // not used: SWP_ASYNCWINDOWPOS, SWP_DEFERERASE, SWP_NOSENDCHANGING, SWP_FRAMECHANGED, SWP_NOCOPYBITS
     const DWORD none = SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOREDRAW | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
     DWORD flags = none;
@@ -603,7 +601,6 @@ static void app_notify(app_t* a) {
             if (minimized != iconic) { SendMessageA(context->window, WM_SYSCOMMAND, iconic ? SC_RESTORE : SC_MINIMIZE, 0); }
             if (maximized != zoomed) { SendMessageA(context->window, WM_SYSCOMMAND, zoomed ? SC_RESTORE : SC_MAXIMIZE, 0); }
         }
-        //      traceln("context->full_screen=%d full_screen=%d presentation=%d", context->full_screen, full_screen, a->presentation);
     }
     SetWindowText(context->window, a->title != null ? a->title : "");
     hide_parent_console(context);
@@ -641,12 +638,10 @@ int app_run(void (*init)(app_t* app), int show_command, int argc, const char** a
     PostThreadMessage(GetCurrentThreadId(), 0xC001, 0, 0);
     MSG msg = {};
     while (GetMessage(&msg, null, 0, 0)) {
-//      traceln("message=%4d 0x%04X", msg.message, msg.message);
         if (msg.message == 0xC001) {
             create_window(&context);
         } else if (msg.message == 0xC002) {
             show_window(&context, show_command);
-            traceln("context->parrent_console_attached=%d", context.parrent_console_attached);
         } else {
             TranslateMessage(&msg); // WM_KEYDOWN/UP -> WM_CHAR, WM_CLICK, WM_CLICK -> WM_DBLCLICK ...
             DispatchMessage(&msg);
