@@ -316,12 +316,17 @@ void app_init(app_t* a) {
     app->touch = touch;
     app->closing = closing;
     app->end = end;
-    app->x = 50;
-    app->y = 20;
-    app->w = 1024;
-    app->h = 768;
-    app->min_w = 640;
-    app->min_h = 480;
+    if (app->w <= 0 && app->h <= 0) {
+        app->x = 50;
+        app->y = 20;
+        app->w = 1024;
+        app->h = 768;
+        app->min_w = 640;
+        app->min_h = 480;
+    } else {
+        app->min_w = app->w;
+        app->min_h = app->h;
+    }
     app->max_w = 1920;
     app->max_h = 1080;
     app->title = "App";

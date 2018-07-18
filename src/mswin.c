@@ -17,7 +17,12 @@ typedef struct context_s {
     HANDLE std_err_handle;
     HANDLE logger_thread;
     volatile bool quiting;
-    bool console; // true for link.exe /SUBSYSTEM:CONSOLE false for /SUBSYSTEM:WINDOWS 
+    bool subsystem_console; // true for link.exe /SUBSYSTEM:CONSOLE false for /SUBSYSTEM:WINDOWS 
+    bool parrent_console_attached; // true if app was started from console window 
+    HWND parent_console_window;
+    HANDLE parent_console_input;
+    HANDLE parent_console_output;
+    HANDLE parent_console_error;
     bool full_screen;
     bool full_screen_saved_maximized;
     int  full_screen_saved_style;
@@ -27,6 +32,21 @@ typedef struct context_s {
 } context_t;
 
 int gettid() { return GetCurrentThreadId(); }
+
+int getppid() {
+    long (WINAPI *NtQueryInformationProcess)(HANDLE processhandle, ULONG processinformationclass,
+        void* processinformation, ULONG processinformationlength, ULONG *returnlength);
+    *(FARPROC*)&NtQueryInformationProcess = GetProcAddress(LoadLibraryA("NTDLL.DLL"), "NtQueryInformationProcess");
+    if (NtQueryInformationProcess != null) {
+        uintptr_t pbi[6] = {};
+        ULONG size = 0;
+        if (NtQueryInformationProcess(GetCurrentProcess(), 0, &pbi, sizeof(pbi), &size) >= 0 && size == sizeof(pbi)) {
+            return (int)pbi[5];
+        }
+    }
+    return -1;
+}
+
 
 const char* strerr(int r) {
     thread_local_storage static char text[4 * 1024];
@@ -156,7 +176,13 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
             break;
         }
         case WM_CLOSE        : PostMessage(window, 0xC003, 0, 0);  return 0; // w/o calling DefWindowProc not to DestroyWindow() prematurely
-        case 0xC003          : /* now all the messages has been processed in the queue */ DestroyWindow(window); return 0; 
+        case 0xC003          : 
+            /* now all the messages has been processed in the queue */ 
+            if (app->closing != null && app->closing(app)) {
+                if (context->full_screen) { toggle_full_screen(context, false); }
+                DestroyWindow(window);
+            }
+            return 0; 
         case WM_DESTROY      : PostQuitMessage(0); break;
         case WM_CHAR         : app->keyboard(app, 0, 0, (int)wp); break;
         case WM_PAINT        : {
@@ -333,13 +359,17 @@ static void redirect_std(FILE* std, int fd) {
 }
 
 static void redirect_io(context_t* context) {
-    CreatePipe(&context->pipe_stdout_read, &context->pipe_stdout_write, null, 0);
+    SECURITY_ATTRIBUTES sa = {};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = false;
+    bool b = CreatePipe(&context->pipe_stdout_read, &context->pipe_stdout_write, &sa, 0);
+    assert(b);
     int fdbug = _open_osfhandle((intptr_t)context->pipe_stdout_write, _O_WRONLY | _O_TEXT);
     assert(fdbug > 0);
     stdbug = _fdopen(fdbug, "wt");
     setvbuf(stdbug, null, _IONBF, 0);
     assert(stdbug != null);
-    if (!context->console) { // do not redirect console handle even if app is begging
+    if (!context->subsystem_console) { // do not redirect subsystem_console handle even if app is begging
         if (_fileno(stdout) < 0) {
             context->std_out_handle = GetStdHandle(STD_OUTPUT_HANDLE);
             SetStdHandle(STD_OUTPUT_HANDLE, context->pipe_stdout_write);
@@ -404,6 +434,86 @@ static int parse_argv(const char* cl, const char** argv, char* buff) {
     return argc;
 }
 
+static void resize_to_console_window(context_t* context) {
+    RECT rc = {};
+    GetWindowRect(context->parent_console_window, &rc);
+    context->app.x = rc.left;
+    context->app.y = rc.top;
+    context->app.w = rc.right - rc.left;
+    context->app.h = rc.bottom - rc.top;
+}
+
+static void attach_console(context_t* context) {
+    context->parrent_console_attached = AttachConsole(ATTACH_PARENT_PROCESS);
+    if (context->parrent_console_attached) {
+        freopen("CONOUT$", "wt", stdout);
+        freopen("CONOUT$", "wt", stderr);
+        freopen("NUL", "rt", stdin);
+    }
+    context->parent_console_window = GetConsoleWindow();
+    if (context->parent_console_window != null) {
+        resize_to_console_window(context);
+        EnableWindow(context->parent_console_window, false);
+        context->parent_console_input  = GetStdHandle(STD_INPUT_HANDLE);
+        context->parent_console_output = GetStdHandle(STD_OUTPUT_HANDLE);
+        context->parent_console_error  = GetStdHandle(STD_ERROR_HANDLE);
+        SetStdHandle(STD_INPUT_HANDLE, (HANDLE)_get_osfhandle(_fileno(stdin)));
+        CancelIo(context->parent_console_input);
+        FlushConsoleInputBuffer(context->parent_console_input);
+    }
+}
+
+static void hide_parent_console(context_t* context) {
+    if (context->app.visible && context->parent_console_window != null && IsWindowVisible(context->parent_console_window)) {
+        ShowWindow(context->parent_console_window, SW_HIDE);
+    }
+}
+
+static void show_parent_console(context_t* context) {
+    if (context->parent_console_window != null) {
+        INPUT_RECORD ir[2] = {};
+        ir[0].EventType = KEY_EVENT;
+        ir[0].Event.KeyEvent.bKeyDown = 1;
+        ir[0].Event.KeyEvent.wRepeatCount = 1;
+        ir[0].Event.KeyEvent.wVirtualKeyCode = VK_RETURN;
+        ir[0].Event.KeyEvent.wVirtualScanCode = VkKeyScanA('\r');
+        ir[0].Event.KeyEvent.uChar.AsciiChar = '\r';
+        ir[1] = ir[0];
+        ir[0].Event.KeyEvent.bKeyDown = 0;
+        DWORD dwWritten = 0;
+        EnableWindow(context->parent_console_window, true);
+        WriteConsoleInputA(context->parent_console_input, ir, 2, &dwWritten);
+        ShowWindow(context->parent_console_window, SW_RESTORE);
+        SetFocus(context->parent_console_window);
+        CONSOLE_CURSOR_INFO ci = { sizeof(CONSOLE_CURSOR_INFO) };
+        GetConsoleCursorInfo(context->parent_console_output, &ci);
+        ci.bVisible = true;
+        SetConsoleCursorInfo(context->parent_console_output, &ci);
+        SetForegroundWindow(context->parent_console_window);
+    }
+}
+
+static void show_window(context_t* context, int show_command) {
+    static const int color_bits = 32;
+    static const int alpha_bits = 0;
+    static const int depth_bits = 24;
+    static const int stencil_bits = 8;
+    static const int accum_bits = 0;
+    HDC dc = GetDC(context->window);
+    bool b = set_pixel_format(context->window, color_bits, alpha_bits, depth_bits, stencil_bits, accum_bits);
+    context->glrc = b ? wglCreateContext(dc) : null;
+    if (b && context->glrc != null) { b = wglMakeCurrent(dc, context->glrc); }
+    ReleaseDC(context->window, dc);
+    assertion(b, "wglCreateContext() failed: %s", strerr(GetLastError()));
+    if (!b) { ExitProcess(0x1BADF00D); }
+    context->app.begin(&context->app); // now visibility and min max info can be used
+    SetWindowTextA(context->window, context->app.title != null ? context->app.title : "");
+    DWORD style = GetWindowLong(context->window, GWL_STYLE);
+    SetWindowLong(context->window, GWL_STYLE, (style & ~(WS_POPUP)) | WS_OVERLAPPED);
+    ShowWindow(context->window, show_command);
+    hide_parent_console(context);
+}
+
 static int message_box(app_t* a, int flags, const char* format, va_list vl) {
     context_t* context = (context_t*)a;
     char text[32 * 1024];
@@ -428,16 +538,17 @@ static void app_toast(app_t* a, int seconds, const char* format, ...) { // TODO:
     va_end(vl);
 }
 
-static void app_asset(app_t* a, const char* name, void* *data, int *bytes) { (void)a;
+static void app_asset(app_t* a, const char* name, void* *data, int *bytes) {
+    (void)a;
     const HMODULE module = GetModuleHandle(null);
     const HRSRC  res = FindResourceA(module, name, RT_RCDATA);
     const HANDLE handle = res != null ? LoadResource(module, res) : null;
-    *data  = handle != null ? LockResource(handle) : null;
+    *data = handle != null ? LockResource(handle) : null;
     *bytes = handle != null ? (int)SizeofResource(module, res) : 0;
 }
 
-static void app_quit(app_t* a, int exit_code)  { (void)a; PostQuitMessage(exit_code); }
-static void app_exit(app_t* a, int exit_code)  { (void)a; exit(exit_code); }
+static void app_quit(app_t* a, int exit_code) { (void)a; PostQuitMessage(exit_code); }
+static void app_exit(app_t* a, int exit_code) { (void)a; exit(exit_code); }
 static void app_abort(app_t* a, int exit_code) { (void)a; ExitProcess(exit_code); }
 
 static void app_invalidate(app_t* a) {
@@ -461,7 +572,7 @@ static void app_notify(app_t* a) {
     int h = rc.bottom - y;
     HWND top = GetTopWindow(null);
     bool topmost = top == context->window;
-    bool active  = GetActiveWindow() == context->window;
+    bool active = GetActiveWindow() == context->window;
     bool visible = IsWindowVisible(context->window);
     bool iconic = IsIconic(context->window);
     bool zoomed = IsZoomed(context->window);
@@ -469,13 +580,15 @@ static void app_notify(app_t* a) {
     bool minimized = presentation == PRESENTATION_MINIMIZED;
     bool maximized = presentation == PRESENTATION_MAXIMIZED;
     bool full_screen = presentation == PRESENTATION_FULL_SCREEN;
-//  traceln("context->full_screen=%d full_screen=%d", context->full_screen, full_screen);
+    //  traceln("context->full_screen=%d full_screen=%d", context->full_screen, full_screen);
     // not used: SWP_ASYNCWINDOWPOS, SWP_DEFERERASE, SWP_NOSENDCHANGING, SWP_FRAMECHANGED, SWP_NOCOPYBITS
     const DWORD none = SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOREDRAW | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
-    DWORD flags  = none;
-    if (a->visible != visible) { flags |= a->visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW; }
-    if (a->active  != active && a->active  ) { flags &= ~SWP_NOACTIVATE; }
-    if (a->topmost != topmost && a->topmost) { flags &= ~(SWP_NOOWNERZORDER|SWP_NOZORDER); }
+    DWORD flags = none;
+    if (a->visible != visible) {
+        flags |= a->visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW;
+    }
+    if (a->active != active && a->active) { flags &= ~SWP_NOACTIVATE; }
+    if (a->topmost != topmost && a->topmost) { flags &= ~(SWP_NOOWNERZORDER | SWP_NOZORDER); }
     if (a->x != x || a->y != y) { flags &= ~SWP_NOMOVE; }
     if (a->w != w || a->h != h) { flags &= ~SWP_NOSIZE; }
     if (flags != none) {
@@ -490,29 +603,10 @@ static void app_notify(app_t* a) {
             if (minimized != iconic) { SendMessageA(context->window, WM_SYSCOMMAND, iconic ? SC_RESTORE : SC_MINIMIZE, 0); }
             if (maximized != zoomed) { SendMessageA(context->window, WM_SYSCOMMAND, zoomed ? SC_RESTORE : SC_MAXIMIZE, 0); }
         }
-//      traceln("context->full_screen=%d full_screen=%d presentation=%d", context->full_screen, full_screen, a->presentation);
+        //      traceln("context->full_screen=%d full_screen=%d presentation=%d", context->full_screen, full_screen, a->presentation);
     }
     SetWindowText(context->window, a->title != null ? a->title : "");
-}
-
-static void show_window(context_t* context, int show_command) {
-    static const int color_bits = 32;
-    static const int alpha_bits = 0;
-    static const int depth_bits = 24;
-    static const int stencil_bits = 8;
-    static const int accum_bits = 0;
-    HDC dc = GetDC(context->window);
-    bool b = set_pixel_format(context->window, color_bits, alpha_bits, depth_bits, stencil_bits, accum_bits);
-    context->glrc = b ? wglCreateContext(dc) : null;
-    if (b && context->glrc != null) { b = wglMakeCurrent(dc, context->glrc); }
-    ReleaseDC(context->window, dc);
-    assertion(b, "wglCreateContext() failed: %s", strerr(GetLastError()));
-    if (!b) { ExitProcess(0x1BADF00D); }
-    context->app.begin(&context->app); // now visibility and min max info can be used
-    SetWindowTextA(context->window, context->app.title != null ? context->app.title : "");
-    DWORD style = GetWindowLong(context->window, GWL_STYLE);
-    SetWindowLong(context->window, GWL_STYLE, (style & ~(WS_POPUP)) | WS_OVERLAPPED);
-    ShowWindow(context->window, show_command);
+    hide_parent_console(context);
 }
 
 int app_run(void (*init)(app_t* app), int show_command, int argc, const char** argv) {
@@ -527,8 +621,8 @@ int app_run(void (*init)(app_t* app), int show_command, int argc, const char** a
     app->message_box = app_message_box;
     app->invalidate = app_invalidate;
     app->invalidate_rectangle = app_invalidate_rectangle;
-    context.console = argc > 0 && argv != null;
-    if (!context.console) {
+    context.subsystem_console = argc > 0 && argv != null;
+    if (!context.subsystem_console) {
         const char* cl = GetCommandLineA();
         const int len = (int)strlen(cl);
         const int k = ((len + 2) / 2) * sizeof(void*) + sizeof(void*);
@@ -541,6 +635,7 @@ int app_run(void (*init)(app_t* app), int show_command, int argc, const char** a
         app->argc = argc;
         app->argv = argv;
     }
+    attach_console(&context);
     redirect_io(&context);
     init(app); 
     PostThreadMessage(GetCurrentThreadId(), 0xC001, 0, 0);
@@ -551,12 +646,14 @@ int app_run(void (*init)(app_t* app), int show_command, int argc, const char** a
             create_window(&context);
         } else if (msg.message == 0xC002) {
             show_window(&context, show_command);
+            traceln("context->parrent_console_attached=%d", context.parrent_console_attached);
         } else {
             TranslateMessage(&msg); // WM_KEYDOWN/UP -> WM_CHAR, WM_CLICK, WM_CLICK -> WM_DBLCLICK ...
             DispatchMessage(&msg);
         }
     }
     app->end(app);
+    show_parent_console(&context);
     join_logger_thread(&context);
     fclose(stdbug); // will actually close context.pipe_stdout_read
     CloseHandle(context.pipe_stdout_read);

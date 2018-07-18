@@ -49,7 +49,6 @@ BEGIN_C
 
 #ifdef _MSC_VER 
 #define thread_local_storage __declspec(thread)
-int gettid();
 #endif
 #define countof(a) (sizeof((a)) / sizeof((a)[0]))
 
@@ -82,6 +81,28 @@ const char* strerr(int r); // extended platform specific strerror()
 #undef assert 
 #define assertion(b, format, ...) (void)(0)
 #define assert(b) (void)(0)
+#endif
+
+#ifdef WINDOWS // even if compile with gcc or clang, also define _CRT_SECURE_NO_WARNINGS=1
+int gettid();
+int getppid();
+#define open(...)       _open(__VA_ARGS__)
+#define read(...)       _read(__VA_ARGS__)
+#define write(...)      _write(__VA_ARGS__)
+#define close(...)      _close(__VA_ARGS__)
+#define stat(...)       _stat(__VA_ARGS__)
+#define fstat(...)      _fstat(__VA_ARGS__)
+#define mkdir(...)      _mkdir(__VA_ARGS__)
+#define snprintf(...)   _snprintf(__VA_ARGS__)
+#define vsnprintf(...)  _vsnprintf(__VA_ARGS__)
+#define O_RDONLY        _O_RDONLY
+#define O_BINARY        _O_BINARY
+#define O_CREAT         _O_CREAT
+#define O_WRONLY        _O_WRONLY
+#define O_TRUNC         _O_TRUNC
+#define S_IREAD         _S_IREAD
+#define S_IWRITE        _S_IWRITE
+#define S_IFDIR         _S_IFDIR#endif
 #endif
 
 END_C
