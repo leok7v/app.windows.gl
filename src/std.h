@@ -39,6 +39,8 @@
 #endif
 #endif
 
+BEGIN_C
+
 #if defined(byte) &&  defined(_MSC_VER)
 #define byte BYTE
 #else
@@ -47,6 +49,7 @@
 
 #ifdef _MSC_VER 
 #define thread_local_storage __declspec(thread)
+int gettid();
 #endif
 #define countof(a) (sizeof((a)) / sizeof((a)[0]))
 
@@ -67,7 +70,9 @@
 
 extern FILE* stdbug; // implemented by platform can be opened to /dev/null
 
-#define traceln(format, ...) fprintf(stdbug, "%s(%d): %s" format "\n", __FILE__, __LINE__, __func__, __VA_ARGS__)
+const char* strerr(int r); // extended platform specific strerror()
+
+#define traceln(format, ...) fprintf(stdbug, "%s(%d): %s [%04d] " format "\n", __FILE__, __LINE__, __func__, gettid(), __VA_ARGS__)
 
 #ifdef DEBUG
 #undef assert 
@@ -78,3 +83,5 @@ extern FILE* stdbug; // implemented by platform can be opened to /dev/null
 #define assertion(b, format, ...) (void)(0)
 #define assert(b) (void)(0)
 #endif
+
+END_C

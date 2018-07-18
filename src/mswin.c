@@ -16,9 +16,17 @@ typedef struct context_s {
     HANDLE std_out_handle;
     HANDLE std_err_handle;
     HANDLE logger_thread;
-    bool console; // true for link.exe /SUBSYSTEM:CONSOLE false for /SUBSYSTEM:WINDOWS 
     volatile bool quiting;
+    bool console; // true for link.exe /SUBSYSTEM:CONSOLE false for /SUBSYSTEM:WINDOWS 
+    bool full_screen;
+    bool full_screen_saved_maximized;
+    int  full_screen_saved_style;
+    int  full_screen_saved_ex_style;
+    RECT full_screen_saved_rect;
+    int  full_screen_saved_presentation;
 } context_t;
+
+int gettid() { return GetCurrentThreadId(); }
 
 const char* strerr(int r) {
     thread_local_storage static char text[4 * 1024];
@@ -87,15 +95,50 @@ static int set_pixel_format(HWND win, int color_bits, int alpha_bits, int depth_
     return b;
 }
 
-static int visibility_to_show_command(int visibility) {
-    switch (visibility) {
-        case VISIBILITY_HIDE: return SW_HIDE;
-        case VISIBILITY_SHOW: return SW_SHOWNORMAL;
-        case VISIBILITY_MIN : return SW_SHOWMINIMIZED;
-        case VISIBILITY_MAX : return SW_SHOWMAXIMIZED;
-        case VISIBILITY_FULL: return SW_SHOWMAXIMIZED; // TODO: https://stackoverflow.com/questions/2382464/win32-full-screen-and-hiding-taskbar
-        default: traceln("unexpected visibility=%d defaulted to SW_SHOWNORMAL", visibility);
-            return SW_SHOWNORMAL;
+static void toggle_full_screen(context_t* context, bool fs) {
+    if (!context->full_screen) {
+        // Chrome: Save current window information.  We force the window into restored mode
+        // before going fullscreen because Windows doesn't seem to hide the
+        // taskbar if the window is in the maximized state.
+        context->full_screen_saved_maximized = !!::IsZoomed(context->window);
+        if (context->full_screen_saved_maximized) { SendMessage(context->window, WM_SYSCOMMAND, SC_RESTORE, 0); }
+        context->full_screen_saved_style    = GetWindowLong(context->window, GWL_STYLE);
+        context->full_screen_saved_ex_style = GetWindowLong(context->window, GWL_EXSTYLE);
+        GetWindowRect(context->window, &context->full_screen_saved_rect);
+    }
+    context->full_screen = fs;
+    RECT* rc = null;
+    if (fs) {
+        SetWindowLong(context->window, GWL_STYLE, context->full_screen_saved_style & ~(WS_CAPTION | WS_THICKFRAME));
+        SetWindowLong(context->window, GWL_EXSTYLE,
+            context->full_screen_saved_ex_style & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
+        MONITORINFO monitor_info = {};
+        monitor_info.cbSize = sizeof(monitor_info);
+        GetMonitorInfo(MonitorFromWindow(context->window, MONITOR_DEFAULTTONEAREST), &monitor_info);
+        rc = &monitor_info.rcMonitor;
+    } else {
+        // Chrome: Reset original window style and size.  The multiple window size/moves
+        // here are ugly, but if SetWindowPos() doesn't redraw, the taskbar won't be
+        // repainted.  Better-looking methods are welcome.
+        SetWindowLong(context->window, GWL_STYLE, context->full_screen_saved_style);
+        SetWindowLong(context->window, GWL_EXSTYLE, context->full_screen_saved_ex_style);
+        if (context->full_screen_saved_maximized) {
+            ::SendMessage(context->window, WM_SYSCOMMAND, SC_MAXIMIZE, 0);
+        }
+        rc = &context->full_screen_saved_rect;
+    }
+    SetWindowPos(context->window, null, rc->left, rc->top, rc->right - rc->left, rc->bottom - rc->top,
+        SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOOWNERZORDER);
+}
+
+static void activate_app(context_t* context) {
+    if (context->app.visible && context->app.presentation != PRESENTATION_MINIMIZED) {
+        SetForegroundWindow(context->window);
+        bool a = context->app.active;
+        context->app.active = true;
+        if (a != context->app.active && context->app.changed != null) { 
+            context->app.changed(&context->app); 
+        }
     }
 }
 
@@ -106,10 +149,10 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
     switch (msg) {
         case WM_GETMINMAXINFO: {
             MINMAXINFO* minmaxinfo = (MINMAXINFO*)lp;
-            minmaxinfo->ptMaxTrackSize.x = minmaxinfo->ptMaxSize.x = app->max_w;
-            minmaxinfo->ptMaxTrackSize.y = minmaxinfo->ptMaxSize.y = app->max_h;
-            minmaxinfo->ptMinTrackSize.x = app->min_w;
-            minmaxinfo->ptMinTrackSize.y = app->min_h;
+            if (app->min_w > 0) { minmaxinfo->ptMinTrackSize.x = app->min_w; }
+            if (app->min_h > 0) { minmaxinfo->ptMinTrackSize.y = app->min_h; }
+            if (app->max_w > 0) { minmaxinfo->ptMaxTrackSize.x = app->max_w; }
+            if (app->max_h > 0) { minmaxinfo->ptMaxTrackSize.y = app->max_h; }
             break;
         }
         case WM_CLOSE        : PostMessage(window, 0xC003, 0, 0);  return 0; // w/o calling DefWindowProc not to DestroyWindow() prematurely
@@ -130,6 +173,52 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
                 traceln("%d %s", GetLastError(), strerr(GetLastError()));
             }
             EndPaint(window, &ps);
+            break;
+        }
+        case WM_ACTIVATE:
+            switch (LOWORD(wp)) {
+                case WA_INACTIVE: app->active = false; break;
+                case WA_CLICKACTIVE:
+                case WA_ACTIVE: app->active = false; break;
+                default: traceln("WARNING: new WM_ACTIVE state %d not handled", LOWORD(wp)); break;
+            }
+            if (!app->active && context->full_screen) { toggle_full_screen(context, false); }
+            if (app->changed != null) { app->changed(app); }
+            break;
+        case WM_LBUTTONDOWN:
+        case WM_MBUTTONDOWN:
+        case WM_RBUTTONDOWN:
+            activate_app(context);
+            break;
+        case WM_SETFOCUS:
+            activate_app(context);
+            break;
+        case WM_ACTIVATEAPP: {
+            if (wp) { activate_app(context); }
+            break;
+        }
+        case WM_WINDOWPOSCHANGED: {
+            WINDOWPOS* pos = (WINDOWPOS*)lp;
+            if ((pos->flags & SWP_NOMOVE) == 0) {
+                app->x = pos->x;
+                app->y = pos->y;
+            }
+            if ((pos->flags & SWP_NOSIZE) == 0) {
+                app->w = pos->cx;
+                app->h = pos->cy;
+            }
+            if (IsIconic(context->window)) { 
+                app->presentation = PRESENTATION_MINIMIZED; 
+            } else if (IsZoomed(context->window)) { 
+                app->presentation = PRESENTATION_MAXIMIZED; 
+            } else  { 
+                app->presentation = context->full_screen ? PRESENTATION_FULL_SCREEN : PRESENTATION_NORMAL;
+//              traceln("WM_WINDOWPOSCHANGED: context->full_screen=%d presentation := %d", context->full_screen, app->presentation);
+            }
+            app->visible = IsWindowVisible(context->window);
+            app->active = GetActiveWindow() == context->window;
+            if (app->changed != null) { app->changed(app); }
+            break;
         }
         case WM_ERASEBKGND   : return true;
 //      case WM_SETCURSOR    : SetCursor(window->cursor); break;
@@ -166,9 +255,9 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
             if (pt.x > w - 8) { return HTRIGHT; }
             if (pt.y < 8) { return HTTOP; }
             if (pt.y > h - 8) { return HTBOTTOM; }
-            return pt.y < 40 ? HTCAPTION : 0;
+            if (pt.y < 40) { return HTCAPTION; };
+            break;
         }
-        
         default: break;
     }
     return DefWindowProcA(window, msg, wp, lp);
@@ -195,16 +284,15 @@ static void create_window(context_t* context) {
     ATOM atom = RegisterClassA(&wc);
     assert(atom != 0);
     context->window = atom == 0 ? null :
-               CreateWindowExA(0 | WS_EX_APPWINDOW, // WS_EX_COMPOSITED|WS_EX_LAYERED|WS_EX_APPWINDOW,
-                               wc.lpszClassName, "", /*WS_BORDER|WS_VISIBLE*/ WS_POPUP,
+               CreateWindowExA(WS_EX_APPWINDOW, // WS_EX_COMPOSITED|WS_EX_LAYERED
+                               wc.lpszClassName, "", WS_POPUP, // WS_POPUP to delay call to WM_GETMINMAXINFO
                                context->app.x, context->app.y, context->app.w, context->app.h, 
-                               null, null, GetModuleHandle(null), null);
+                               null, null, GetModuleHandle(null), context);
     assert(atom == 0 || context->window != null);
     if (context->window == null) {
         ExitProcess(ERROR_FATAL_APP_EXIT);
     } else {
         SetPropA(context->window, "app.context", context);
-        ShowWindow(context->window, visibility_to_show_command(context->app.visibility));
     }
 }
 
@@ -363,7 +451,71 @@ static void app_invalidate_rectangle(app_t* a, int x, int y, int w, int h) {
     InvalidateRect(context->window, &rc, false);
 }
 
-int app_run(void (*init)(app_t* app), int argc, const char** argv, int visibility) {
+static void app_notify(app_t* a) {
+    context_t* context = (context_t*)a;
+    RECT rc;
+    GetClientRect(context->window, &rc);
+    int x = rc.left;
+    int y = rc.top;
+    int w = rc.right - x;
+    int h = rc.bottom - y;
+    HWND top = GetTopWindow(null);
+    bool topmost = top == context->window;
+    bool active  = GetActiveWindow() == context->window;
+    bool visible = IsWindowVisible(context->window);
+    bool iconic = IsIconic(context->window);
+    bool zoomed = IsZoomed(context->window);
+    const int  presentation = a->presentation;
+    bool minimized = presentation == PRESENTATION_MINIMIZED;
+    bool maximized = presentation == PRESENTATION_MAXIMIZED;
+    bool full_screen = presentation == PRESENTATION_FULL_SCREEN;
+//  traceln("context->full_screen=%d full_screen=%d", context->full_screen, full_screen);
+    // not used: SWP_ASYNCWINDOWPOS, SWP_DEFERERASE, SWP_NOSENDCHANGING, SWP_FRAMECHANGED, SWP_NOCOPYBITS
+    const DWORD none = SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOREDRAW | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
+    DWORD flags  = none;
+    if (a->visible != visible) { flags |= a->visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW; }
+    if (a->active  != active && a->active  ) { flags &= ~SWP_NOACTIVATE; }
+    if (a->topmost != topmost && a->topmost) { flags &= ~(SWP_NOOWNERZORDER|SWP_NOZORDER); }
+    if (a->x != x || a->y != y) { flags &= ~SWP_NOMOVE; }
+    if (a->w != w || a->h != h) { flags &= ~SWP_NOSIZE; }
+    if (flags != none) {
+        SetWindowPos(context->window, a->topmost ? top : null, a->x, a->y, a->w, a->h, flags);
+    }
+    if (a->visible) { // do not mess with Maximize, Minimize in invisible state. Window Manager will behave strangely. Bugs in MS Windows
+        if (context->full_screen != full_screen) {
+            if (!full_screen) { context->full_screen_saved_presentation = presentation; }
+            toggle_full_screen(context, full_screen);
+            a->presentation = context->full_screen ? PRESENTATION_FULL_SCREEN : context->full_screen_saved_presentation;
+        } else {
+            if (minimized != iconic) { SendMessageA(context->window, WM_SYSCOMMAND, iconic ? SC_RESTORE : SC_MINIMIZE, 0); }
+            if (maximized != zoomed) { SendMessageA(context->window, WM_SYSCOMMAND, zoomed ? SC_RESTORE : SC_MAXIMIZE, 0); }
+        }
+//      traceln("context->full_screen=%d full_screen=%d presentation=%d", context->full_screen, full_screen, a->presentation);
+    }
+    SetWindowText(context->window, a->title != null ? a->title : "");
+}
+
+static void show_window(context_t* context, int show_command) {
+    static const int color_bits = 32;
+    static const int alpha_bits = 0;
+    static const int depth_bits = 24;
+    static const int stencil_bits = 8;
+    static const int accum_bits = 0;
+    HDC dc = GetDC(context->window);
+    bool b = set_pixel_format(context->window, color_bits, alpha_bits, depth_bits, stencil_bits, accum_bits);
+    context->glrc = b ? wglCreateContext(dc) : null;
+    if (b && context->glrc != null) { b = wglMakeCurrent(dc, context->glrc); }
+    ReleaseDC(context->window, dc);
+    assertion(b, "wglCreateContext() failed: %s", strerr(GetLastError()));
+    if (!b) { ExitProcess(0x1BADF00D); }
+    context->app.begin(&context->app); // now visibility and min max info can be used
+    SetWindowTextA(context->window, context->app.title != null ? context->app.title : "");
+    DWORD style = GetWindowLong(context->window, GWL_STYLE);
+    SetWindowLong(context->window, GWL_STYLE, (style & ~(WS_POPUP)) | WS_OVERLAPPED);
+    ShowWindow(context->window, show_command);
+}
+
+int app_run(void (*init)(app_t* app), int show_command, int argc, const char** argv) {
     context_t context = {};
     app_t* app = &context.app;
     app->quit  = app_quit;
@@ -371,10 +523,10 @@ int app_run(void (*init)(app_t* app), int argc, const char** argv, int visibilit
     app->abort = app_abort;
     app->asset = app_asset;
     app->toast = app_toast;
+    app->notify = app_notify;
     app->message_box = app_message_box;
     app->invalidate = app_invalidate;
     app->invalidate_rectangle = app_invalidate_rectangle;
-    app->visibility = visibility;
     context.console = argc > 0 && argv != null;
     if (!context.console) {
         const char* cl = GetCommandLineA();
@@ -394,23 +546,11 @@ int app_run(void (*init)(app_t* app), int argc, const char** argv, int visibilit
     PostThreadMessage(GetCurrentThreadId(), 0xC001, 0, 0);
     MSG msg = {};
     while (GetMessage(&msg, null, 0, 0)) {
+//      traceln("message=%4d 0x%04X", msg.message, msg.message);
         if (msg.message == 0xC001) {
             create_window(&context);
         } else if (msg.message == 0xC002) {
-            static const int color_bits = 32;
-            static const int alpha_bits = 0;
-            static const int depth_bits = 24;
-            static const int stencil_bits = 8;
-            static const int accum_bits = 0;
-            HDC dc = GetDC(context.window);
-            bool b = set_pixel_format(context.window, color_bits, alpha_bits, depth_bits, stencil_bits, accum_bits);
-            context.glrc = b ? wglCreateContext(dc) : null;
-            if (b && context.glrc != null) { b = wglMakeCurrent(dc, context.glrc); }
-            ReleaseDC(context.window, dc);
-            assertion(b, "wglCreateContext() failed: %s", strerr(GetLastError()));
-            if (!b) { ExitProcess(0x1BADF00D); }
-            app->begin(app);
-            SetWindowTextA(context.window, app->title != null ? app->title : "");
+            show_window(&context, show_command);
         } else {
             TranslateMessage(&msg); // WM_KEYDOWN/UP -> WM_CHAR, WM_CLICK, WM_CLICK -> WM_DBLCLICK ...
             DispatchMessage(&msg);

@@ -235,7 +235,7 @@ static void begin(app_t* a) {
 //  app->exit(a, 153);
 }
 
-static void changed(app_t* a, int x, int y, int w, int h, int v) {}
+static void changed(app_t* a) {  }
 
 static void paint(app_t* a, int x, int y, int w, int h) {
 /*
@@ -254,11 +254,17 @@ static void paint(app_t* a, int x, int y, int w, int h) {
 
 static void keyboard(app_t* a, int state, int key, int character) {
     (void)(state, key);
-    traceln("ch=%c %d 0x%02X\n", character, character, character);
-    if (character == 'q' || character == 'Q') {
-        a->quit(a, 0);
-    }
+    traceln("ch=%c %d 0x%02X", character, character, character);
     switch (character) {
+        case 'q': case 'Q':
+            a->quit(a, 0);
+            break;
+        case 'f': case 'F':
+            app->presentation = app->presentation == PRESENTATION_FULL_SCREEN ? PRESENTATION_NORMAL : PRESENTATION_FULL_SCREEN;
+//          traceln("app->presentation=%d %s", app->presentation, app->presentation == PRESENTATION_FULL_SCREEN ? "FULL_SCREEN" : "NORMAL");
+            app->w--;
+            app->notify(app);
+            break;
         case 'o': case 'O':
             font = (font + 1) % 3 + (font / 3) * 3;
             break;
@@ -310,16 +316,15 @@ void app_init(app_t* a) {
     app->touch = touch;
     app->closing = closing;
     app->end = end;
-    app->x = -1;
-    app->y = -1;
+    app->x = 50;
+    app->y = 20;
     app->w = 1024;
     app->h = 768;
     app->min_w = 640;
     app->min_h = 480;
     app->max_w = 1920;
-    app->max_w = 1080;
+    app->max_h = 1080;
     app->title = "App";
-    app->visibility = VISIBILITY_SHOW;
 }
 
 static_init(app) {
