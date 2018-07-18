@@ -3,20 +3,6 @@
 
 BEGIN_C
 
-extern FILE* stdtrace; // implemented by platform can be /dev/null
-
-#define traceln(format, ...) fprintf(stdtrace, "%s(%d): %s" format "\n", __FILE__, __LINE__, __func__, __VA_ARGS__)
-
-#ifdef DEBUG
-#undef assert 
-#define assertion(b, format, ...) (void)( (!!(b)) || (fprintf(stderr, "%s(%d): %s assertion " ## #b ## "failed. " format "\n", __FILE__, __LINE__, __func__, __VA_ARGS__), 0)) 
-#define assert(b) assertion(b, "") 
-#else
-#undef assert 
-#define assertion(b, format, ...) (void)(0)
-#define assert(b) (void)(0)
-#endif
-
 typedef struct app_s app_t;
 
 enum {
@@ -71,7 +57,6 @@ typedef struct app_s {
     int min_h;
     int max_w;
     int max_h;
-    bool redirect_std; // true -> stdout and stderr also redirected to logd or OutputDebugStringA
 } app_t;
 
 const char* strerr(int r); // extended platform specific strerror()
@@ -80,3 +65,23 @@ void app_init(app_t* app); // implemented by application code called by startup
 int  app_run(void (*init)(app_t* app), int argc, const char** argv, int visibility);
 
 END_C
+
+/*
+    "stdbug" and traceln()
+    in addition to stdout and stderr stdbug handle writes log (trace) messages to 
+    the system log facility. On OSX it is same as stderr. On Windows it's different
+    see below. On Android it's logcat
+
+    Windows specifics:
+    Platform allow UI apps to be started as /SUBSYTEM:WINDOWS and /SUBSYSTEM:CONSOLE
+    On Windows UI subsystem application usually starts with stderr and stdout as 
+    closed handles (_fileno(std*) == -2. If and only if this is the case
+    both are "redirected" to OutputDebugString in case code you are running is
+    using printf() and fprintf().
+    If you do not want to spam the debug log you can close both files by redirecting
+    them to "NUL" device: reopen("NUL", "wt", stdout); reopen("NUL", "wt", stderr);
+    Because they share the handle with stdbug fclose(stdout); fclose(stderr); will
+    have unexpected result - first one will close all three and second one will raise
+    0xC0000008 invalid handle exception inside NTDLL.
+    If you run UI app.exe >foo 2>bar the handles will NOT be redirected to stdbug.
+*/

@@ -65,11 +65,16 @@
 #define _DEBUG
 #endif
 
-#ifdef IMPLEMENT_STD
+extern FILE* stdbug; // implemented by platform can be opened to /dev/null
 
-BEGIN_C
+#define traceln(format, ...) fprintf(stdbug, "%s(%d): %s" format "\n", __FILE__, __LINE__, __func__, __VA_ARGS__)
 
-
-END_C
-
-#endif // IMPLEMENT_STD
+#ifdef DEBUG
+#undef assert 
+#define assertion(b, format, ...) (void)( (!!(b)) || (traceln("%s(%d): %s assertion " ## #b ## "failed. " format "\n", __FILE__, __LINE__, __func__, __VA_ARGS__), 0)) 
+#define assert(b) assertion(b, "") 
+#else
+#undef assert 
+#define assertion(b, format, ...) (void)(0)
+#define assert(b) (void)(0)
+#endif

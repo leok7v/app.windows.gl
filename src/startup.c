@@ -5,11 +5,11 @@
 #include "mem.h"
 #include "app.h"
 #if defined(_WINDOWS)
-#include "app_windows.h"
+#include "mswin.h"
 #elif defined(_OSX)
-#include "app_windows.h"
+#include "osx.h"
 #elif  defined(_ANDROID)
-#include "app_android.h"
+#include "droid.h"
 #endif
 
 BEGIN_C
@@ -30,7 +30,7 @@ static int show_command_to_visibility(int show_command) {
     }
 }
 
-int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ char*, _In_ int show_command) {
+int WINAPI WinMain(HINSTANCE, HINSTANCE, char*, int show_command) {
     // argc = 0 and argv = null for WinMain /SUBSYSTEM:WINDOWS
     return (int)app_run(init, 0, null, show_command_to_visibility(show_command));
 }

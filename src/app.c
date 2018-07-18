@@ -1,6 +1,6 @@
 #include "std.h"
 #include "app.h"
-#include "inc_ms_win.h"
+#include "mswin.h"
 
 #pragma warning(disable: 4505)  // unreferenced local function has been removed (rect_width_compare)
 #pragma warning(disable: 4100)  // unreferenced parameter
@@ -320,7 +320,6 @@ void app_init(app_t* a) {
     app->max_w = 1080;
     app->title = "App";
     app->visibility = VISIBILITY_SHOW;
-    app->redirect_std = true;
 }
 
 static_init(app) {

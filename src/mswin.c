@@ -1,25 +1,9 @@
-#pragma once
-
 #include "app.h"
-
-#if !defined(STRICT)
-#define STRICT
-#endif
-
-#define WIN32_LEAN_AND_MEAN 
-#define VC_EXTRALEAN
-#define NOMINMAX 
-#pragma warning(disable: 4820) // '...' bytes padding added after data member
-#pragma warning(disable: 4668) // '...' is not defined as a preprocessor macro, replacing with '0' for '#if/#elif'
-#pragma warning(disable: 4917) // '...' : a GUID can only be associated with a class, interface or namespace
-#pragma warning(disable: 4987) // nonstandard extension used: 'throw (...)'
-#pragma warning(disable: 4365) // argument : conversion from 'int' to 'size_t', signed/unsigned mismatch
-#pragma warning(error:   4706) // assignment in conditional expression (this is the only way I found to turn it on)
-#include <Windows.h>
+#include "mswin.h"
 
 BEGIN_C
 
-FILE* stdtrace;
+FILE* stdbug;
 
 typedef struct context_s {
     app_t app;
@@ -29,7 +13,10 @@ typedef struct context_s {
     HCURSOR CURSOR_WAIT;
     HANDLE pipe_stdout_read;
     HANDLE pipe_stdout_write;
+    HANDLE std_out_handle;
+    HANDLE std_err_handle;
     HANDLE logger_thread;
+    bool console; // true for link.exe /SUBSYSTEM:CONSOLE false for /SUBSYSTEM:WINDOWS 
     volatile bool quiting;
 } context_t;
 
@@ -43,6 +30,40 @@ const char* strerr(int r) {
     }
     return text;
 }
+
+static void* mem_map(const char* filename, int* bytes, bool rw) {
+    void* address = null;
+    HANDLE file = CreateFileA(filename, rw ? (GENERIC_READ | GENERIC_WRITE) : GENERIC_READ, 0, null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, null);
+    if (file != INVALID_HANDLE_VALUE) {
+        LARGE_INTEGER size = { 0 };
+        if (GetFileSizeEx(file, &size) && 0 < size.QuadPart && size.QuadPart <= 0x7FFFFFFF) {
+            HANDLE map_file = CreateFileMapping(file, NULL, rw ? PAGE_READWRITE : PAGE_READONLY, 0, (DWORD)size.QuadPart, null);
+            if (map_file != null) {
+                address = MapViewOfFile(map_file, rw ? FILE_MAP_READ | SECTION_MAP_WRITE : FILE_MAP_READ, 0, 0, (int)size.QuadPart);
+                if (address != null) {
+                    *bytes = (int)size.QuadPart;
+                }
+                int b = CloseHandle(map_file);
+                assert(b); (void)b;
+            }
+        }
+        int b = CloseHandle(file);
+        assert(b); (void)b;
+    }
+    return address;
+}
+
+void* mem_map_read(const char* filename, int* bytes) { return mem_map(filename, bytes, false); }
+
+void* mem_map_read_write(const char* filename, int* bytes) { return mem_map(filename, bytes, true); }
+
+void mem_unmap(void* address, int bytes) {
+    if (address != null) {
+        int b = UnmapViewOfFile(address); (void)bytes; /* unused */
+        assert(b); (void)b;
+    }
+}
+
 
 static int set_pixel_format(HWND win, int color_bits, int alpha_bits, int depth_bits, int stencil_bits, int accum_bits) {
     HDC dc = GetWindowDC(win);
@@ -187,14 +208,13 @@ static void create_window(context_t* context) {
     }
 }
 
-static DWORD WINAPI logger(void* param) {
-    SetThreadDescription(GetCurrentThread(), L"logger");
+static DWORD WINAPI logger_thread(void* param) {
+    SetThreadDescription(GetCurrentThread(), L"logger_thread");
     context_t* context = (context_t*)param;
     char text[2 * 1024 + 1]; // OutputDebugStringA used to have 2KB limitation
     while (!context->quiting) {
         DWORD available = 0;
         if (PeekNamedPipe(context->pipe_stdout_read, text, sizeof(text) - 1, null, &available, null) && available > 0) {
-//          traceln("available=%d\n", available);
             DWORD read = 0;
             if (ReadFile(context->pipe_stdout_read, text, sizeof(text) - 1, &read, null) && read > 0) {
                 text[read] = 0;
@@ -204,6 +224,46 @@ static DWORD WINAPI logger(void* param) {
         }
     }
     return 0;
+}
+
+static void join_logger_thread(context_t* context) {
+    context->quiting = true;
+    byte wake_up_thread = 0;
+    OVERLAPPED overlapped = {}; // to avoid WriteFile deadlock when thread is done before peeking and reading the pipe
+    overlapped.hEvent = CreateEvent(null, false, false, null);
+    WriteFile(context->pipe_stdout_write, &wake_up_thread, 1, null, &overlapped);
+    WaitForSingleObject(context->logger_thread, INFINITE); // join thread
+    CancelIoEx(context->pipe_stdout_write, &overlapped);
+    CloseHandle(overlapped.hEvent);
+}
+
+static void redirect_std(FILE* std, int fd) {
+    freopen("NUL", "wt", std);
+    assert(_fileno(std) > 0);
+    if (_dup2(fd, _fileno(std)) != 0) { assert(false); };
+    setvbuf(std, null, _IONBF, 0);
+}
+
+static void redirect_io(context_t* context) {
+    CreatePipe(&context->pipe_stdout_read, &context->pipe_stdout_write, null, 0);
+    int fdbug = _open_osfhandle((intptr_t)context->pipe_stdout_write, _O_WRONLY | _O_TEXT);
+    assert(fdbug > 0);
+    stdbug = _fdopen(fdbug, "wt");
+    setvbuf(stdbug, null, _IONBF, 0);
+    assert(stdbug != null);
+    if (!context->console) { // do not redirect console handle even if app is begging
+        if (_fileno(stdout) < 0) {
+            context->std_out_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            SetStdHandle(STD_OUTPUT_HANDLE, context->pipe_stdout_write);
+            redirect_std(stdout, fdbug);
+        }
+        if (_fileno(stderr) < 0) {
+            context->std_err_handle = GetStdHandle(STD_ERROR_HANDLE);
+            SetStdHandle(STD_ERROR_HANDLE, context->pipe_stdout_write);
+            redirect_std(stderr, fdbug);
+        }
+    }
+    context->logger_thread = CreateThread(null, 0, logger_thread, context, 0, null);
 }
 
 // https://blogs.msdn.microsoft.com/twistylittlepassagesallalike/2011/04/23/everyone-quotes-command-line-arguments-the-wrong-way/
@@ -315,45 +375,24 @@ int app_run(void (*init)(app_t* app), int argc, const char** argv, int visibilit
     app->invalidate = app_invalidate;
     app->invalidate_rectangle = app_invalidate_rectangle;
     app->visibility = visibility;
-    bool console;
-    if (argc == 0 && argv == null) {
-        console = false;
+    context.console = argc > 0 && argv != null;
+    if (!context.console) {
         const char* cl = GetCommandLineA();
         const int len = (int)strlen(cl);
         const int k = ((len + 2) / 2) * sizeof(void*) + sizeof(void*);
         const int n = k + (len + 2) * sizeof(char);
-        argv = (const char**)alloca(n);
-        memset(argv, 0, n);
-        char* buff = (char*)(((char*)argv) + k);
-        argc = parse_argv(cl, argv, buff);
+        app->argv = (const char**)alloca(n);
+        memset(app->argv, 0, n);
+        char* buff = (char*)(((char*)app->argv) + k);
+        app->argc = parse_argv(cl, app->argv, buff);
     } else {
-        console = true;
-        assertion(argc >= 1 && argv != null && argv[0] != null, "argc=%d", argc); // command line invocation
+        app->argc = argc;
+        app->argv = argv;
     }
-    app->argc = argc;
-    app->argv = argv;
-    MSG msg = {};
-    CreatePipe(&context.pipe_stdout_read, &context.pipe_stdout_write, null, 0);
-    HANDLE std_out_handle = GetStdHandle(STD_OUTPUT_HANDLE);
-    HANDLE std_err_handle = GetStdHandle(STD_ERROR_HANDLE);
-    int fd_trace = _open_osfhandle((intptr_t)context.pipe_stdout_write, _O_WRONLY | _O_TEXT);
-    assert(fd_trace > 0);
-    stdtrace = _fdopen(fd_trace, "wt");
-    setvbuf(stdtrace, null, _IONBF, 0);
-    assert(stdtrace != null);
-    init(app); // will tell us if it wants stdout, stderr redirected
-    if (!console && app->redirect_std) { // do not redirect console handle even if app is begging
-        SetStdHandle(STD_OUTPUT_HANDLE, context.pipe_stdout_write);
-        SetStdHandle(STD_ERROR_HANDLE, context.pipe_stdout_write);
-        if (_fileno(stdout) < 0) { freopen("NUL", "wt", stdout); }
-        if (_fileno(stderr) < 0) { freopen("NUL", "wt", stderr); }
-        if (_dup2(fd_trace, _fileno(stdout)) != 0) { assert(false); };
-        if (_dup2(fd_trace, _fileno(stderr)) != 0) { assert(false); };
-        setvbuf(stdout, null, _IONBF, 0);
-        setvbuf(stderr, null, _IONBF, 0);
-    }
-    context.logger_thread = CreateThread(null, 0, logger, &context, 0, null);
+    redirect_io(&context);
+    init(app); 
     PostThreadMessage(GetCurrentThreadId(), 0xC001, 0, 0);
+    MSG msg = {};
     while (GetMessage(&msg, null, 0, 0)) {
         if (msg.message == 0xC001) {
             create_window(&context);
@@ -378,20 +417,15 @@ int app_run(void (*init)(app_t* app), int argc, const char** argv, int visibilit
         }
     }
     app->end(app);
-    context.quiting = true;
-    byte quit = 0;
-    WriteFile(context.pipe_stdout_write, &quit, 1, null, null);
-    WaitForSingleObject(context.logger_thread, INFINITE); // join thread
-    fclose(stdtrace); // will actually close context.pipe_stdout_read
+    join_logger_thread(&context);
+    fclose(stdbug); // will actually close context.pipe_stdout_read
     CloseHandle(context.pipe_stdout_read);
     CloseHandle(context.logger_thread);
+    // no need to fclose: stdout and stderr because both of them are 
+    // attached to the same pipe_stdout_write handle which has been closed
+    if (context.std_out_handle != null) { SetStdHandle(STD_OUTPUT_HANDLE, context.std_out_handle); }
+    if (context.std_out_handle != null) { SetStdHandle(STD_ERROR_HANDLE, context.std_err_handle); }
     assert(msg.message == WM_QUIT);
-    // no need to fclose: stdtrace, stdout and stderr because 
-    // they all attached to the same pipe_stdout_write handle which has been closed
-    if (app->redirect_std) {
-        SetStdHandle(STD_OUTPUT_HANDLE, std_out_handle);
-        SetStdHandle(STD_ERROR_HANDLE, std_err_handle);
-    }
     return (int)msg.wParam;
 }
 
