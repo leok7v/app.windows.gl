@@ -17,8 +17,8 @@ typedef struct context_s {
     HANDLE std_err_handle;
     HANDLE logger_thread;
     volatile bool quiting;
-    bool subsystem_console; // true for link.exe /SUBSYSTEM:CONSOLE false for /SUBSYSTEM:WINDOWS 
-    bool parrent_console_attached; // true if app was started from console window 
+    bool subsystem_console; // true for link.exe /SUBSYSTEM:CONSOLE false for /SUBSYSTEM:WINDOWS
+    bool parrent_console_attached; // true if app was started from console window
     HWND parent_console_window;
     HANDLE parent_console_input;
     HANDLE parent_console_output;
@@ -156,8 +156,8 @@ static void activate_app(context_t* context) {
         SetForegroundWindow(context->window);
         bool a = context->app.active;
         context->app.active = true;
-        if (a != context->app.active && context->app.changed != null) { 
-            context->app.changed(&context->app); 
+        if (a != context->app.active && context->app.changed != null) {
+            context->app.changed(&context->app);
         }
     }
 }
@@ -176,13 +176,13 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
             break;
         }
         case WM_CLOSE        : PostMessage(window, 0xC003, 0, 0);  return 0; // w/o calling DefWindowProc not to DestroyWindow() prematurely
-        case 0xC003          : 
-            /* now all the messages has been processed in the queue */ 
+        case 0xC003          :
+            /* now all the messages has been processed in the queue */
             if (app->closing != null && app->closing(app)) {
                 if (context->full_screen) { toggle_full_screen(context, false); }
                 DestroyWindow(window);
             }
-            return 0; 
+            return 0;
         case WM_DESTROY      : PostQuitMessage(0); break;
         case WM_CHAR         : app->keyboard(app, 0, 0, (int)wp); break;
         case WM_PAINT        : {
@@ -233,11 +233,11 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
                 app->w = pos->cx;
                 app->h = pos->cy;
             }
-            if (IsIconic(context->window)) { 
-                app->presentation = PRESENTATION_MINIMIZED; 
-            } else if (IsZoomed(context->window)) { 
-                app->presentation = PRESENTATION_MAXIMIZED; 
-            } else  { 
+            if (IsIconic(context->window)) {
+                app->presentation = PRESENTATION_MINIMIZED;
+            } else if (IsZoomed(context->window)) {
+                app->presentation = PRESENTATION_MAXIMIZED;
+            } else  {
                 app->presentation = context->full_screen ? PRESENTATION_FULL_SCREEN : PRESENTATION_NORMAL;
             }
             app->visible = IsWindowVisible(context->window);
@@ -262,7 +262,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT msg, WPARAM wp, LPARAM lp)
         case WM_KEYUP        : application.on_key_up(app, window, (int)wp); break;
         case WM_TIMER        : application.on_timer(app, window, (int)wp); break;
 */
-        case WM_CREATE: 
+        case WM_CREATE:
             PostThreadMessage(GetCurrentThreadId(), 0xC002, 0, 0);
             return 0;
         case WM_NCHITTEST: {
@@ -296,14 +296,14 @@ static void create_window(context_t* context) {
     wc.lpfnWndProc = window_proc;
     wc.cbClsExtra = 0;
     wc.cbWndExtra = 256*1024;
-    wc.hInstance = GetModuleHandle(null); 
+    wc.hInstance = GetModuleHandle(null);
 #ifndef IDI_ICON
     wc.hIcon = LoadIcon(GetModuleHandle(null), MAKEINTRESOURCE(101)); // MS Dev Studio usualy generates IDI_ICON as 101
 #else
     wc.hIcon = LoadIcon(GetModuleHandle(null), MAKEINTRESOURCE(IDI_ICON));
 #endif
     wc.hCursor = context->CURSOR_ARROW;
-    wc.hbrBackground = null; // CreateSolidBrush(RGB(0, 0, 0)); 
+    wc.hbrBackground = null; // CreateSolidBrush(RGB(0, 0, 0));
     wc.lpszMenuName = null;
     wc.lpszClassName = "app";
     ATOM atom = RegisterClassA(&wc);
@@ -311,7 +311,7 @@ static void create_window(context_t* context) {
     context->window = atom == 0 ? null :
                CreateWindowExA(WS_EX_APPWINDOW, // WS_EX_COMPOSITED|WS_EX_LAYERED
                                wc.lpszClassName, "", WS_POPUP, // WS_POPUP to delay call to WM_GETMINMAXINFO
-                               context->app.x, context->app.y, context->app.w, context->app.h, 
+                               context->app.x, context->app.y, context->app.w, context->app.h,
                                null, null, GetModuleHandle(null), context);
     assert(atom == 0 || context->window != null);
     if (context->window == null) {
@@ -418,9 +418,9 @@ static int parse_argv(const char* cl, const char** argv, char* buff) {
         argv[argc++] = buff + j;
         if (ch == QUOTE) {
             ch = next_char(&cl, &escaped);
-            while (ch != 0) { 
+            while (ch != 0) {
                 if (ch == QUOTE && !escaped) { break; }
-                buff[j++] = ch; ch = next_char(&cl, &escaped); 
+                buff[j++] = ch; ch = next_char(&cl, &escaped);
             }
             buff[j++] = 0;
             if (ch == 0) { break; }
@@ -634,7 +634,7 @@ int app_run(void (*init)(app_t* app), int show_command, int argc, const char** a
     }
     attach_console(&context);
     redirect_io(&context);
-    init(app); 
+    init(app);
     PostThreadMessage(GetCurrentThreadId(), 0xC001, 0, 0);
     MSG msg = {};
     while (GetMessage(&msg, null, 0, 0)) {
@@ -653,7 +653,7 @@ int app_run(void (*init)(app_t* app), int show_command, int argc, const char** a
     fclose(stdbug); // will actually close context.pipe_stdout_read
     CloseHandle(context.pipe_stdout_read);
     CloseHandle(context.logger_thread);
-    // no need to fclose: stdout and stderr because both of them are 
+    // no need to fclose: stdout and stderr because both of them are
     // attached to the same pipe_stdout_write handle which has been closed
     if (context.std_out_handle != null) { SetStdHandle(STD_OUTPUT_HANDLE, context.std_out_handle); }
     if (context.std_out_handle != null) { SetStdHandle(STD_ERROR_HANDLE, context.std_err_handle); }
@@ -674,8 +674,8 @@ static void app_heap_leaks_detect() {
         _CrtMemDumpStatistics(&memory_state_3);
         // we want to dump memory leaks earlier to enable memory
         // examination when we heat breakpoint below
-        _CrtDumpMemoryLeaks(); 
-        _CrtSetDbgFlag(0); // not to dump leaks twice     
+        _CrtDumpMemoryLeaks();
+        _CrtSetDbgFlag(0); // not to dump leaks twice
 //      __debugbreak();    // this is your chance to examine content of leaked memory in Alt+6 Debugger Memory View pane
     }
 }
@@ -688,7 +688,7 @@ static_init(app_heap_leaks_detection) {
 //  if we have report like: {241} crt block at 0x012B13E8, subtype 0, 24 bytes long
 //  uncommenting next line will set breakpoint on 241th allocation
 //  _crtBreakAlloc = 241; _CrtSetBreakAlloc(241);
-//  uncomment next line to test that heap leak detection works    
+//  uncomment next line to test that heap leak detection works
 //  void* intentinal_leak_for_testing = mem_alloc(153); (void)intentinal_leak_for_testing;
     atexit(app_heap_leaks_detect);
 }

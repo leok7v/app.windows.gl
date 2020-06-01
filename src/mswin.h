@@ -4,9 +4,9 @@
 #define STRICT
 #endif
 
-#define WIN32_LEAN_AND_MEAN 
+#define WIN32_LEAN_AND_MEAN
 #define VC_EXTRALEAN
-#define NOMINMAX 
+#define NOMINMAX
 #pragma warning(disable: 4820) // '...' bytes padding added after data member
 #pragma warning(disable: 4668) // '...' is not defined as a preprocessor macro, replacing with '0' for '#if/#elif'
 #pragma warning(disable: 4917) // '...' : a GUID can only be associated with a class, interface or namespace

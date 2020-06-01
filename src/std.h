@@ -29,7 +29,7 @@
 #define null    nullptr
 #else
 #define BEGIN_C
-#define END_C  
+#define END_C
 #define null    ((void*)0)
 #ifndef false
 #define false               0
@@ -47,7 +47,7 @@ BEGIN_C
 #define byte uint8_t
 #endif
 
-#ifdef _MSC_VER 
+#ifdef _MSC_VER
 #define thread_local_storage __declspec(thread)
 #endif
 #define countof(a) (sizeof((a)) / sizeof((a)[0]))
@@ -74,11 +74,11 @@ const char* strerr(int r); // extended platform specific strerror()
 #define traceln(format, ...) fprintf(stdbug, "%s(%d): %s [%04d] " format "\n", __FILE__, __LINE__, __func__, gettid(), __VA_ARGS__)
 
 #ifdef DEBUG
-#undef assert 
-#define assertion(b, format, ...) (void)( (!!(b)) || (traceln("%s(%d): %s assertion " ## #b ## "failed. " format "\n", __FILE__, __LINE__, __func__, __VA_ARGS__), 0)) 
-#define assert(b) assertion(b, "") 
+#undef assert
+#define assertion(b, format, ...) (void)( (!!(b)) || (traceln("%s(%d): %s assertion " ## #b ## "failed. " format "\n", __FILE__, __LINE__, __func__, __VA_ARGS__), 0))
+#define assert(b) assertion(b, "")
 #else
-#undef assert 
+#undef assert
 #define assertion(b, format, ...) (void)(0)
 #define assert(b) (void)(0)
 #endif

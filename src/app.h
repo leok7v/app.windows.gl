@@ -13,7 +13,7 @@ enum {
 };
 
 enum {                              // result:
-    MESSAGE_BOX_OK            = 0, 
+    MESSAGE_BOX_OK            = 0,
     MESSAGE_BOX_OK_CANCEL     = 1,  // OK  1 CANCEL -1
     MESSAGE_BOX_YES_NO        = 4,  // YES 1 NO 0
     MESSAGE_BOX_YES_NO_CANCEL = 3,  // YES 1 NO 0 CANCEL -1
@@ -46,8 +46,8 @@ typedef struct app_s {
     void (*asset)(app_t* a, const char* name, void* *data, int *bytes);
     void (*notify)(app_t* a); // Notify platform that application changed geometry or active, visible, presentation, topmost, title state,
     // "that" can be freely used by application code
-    void* that; 
-    // application title, can be changed any time but platform needs to be notified of change 
+    void* that;
+    // application title, can be changed any time but platform needs to be notified of change
     const char*  title;
     // supplied by startup valid only between begin() and end() callbacks:
     int argc;
@@ -58,15 +58,15 @@ typedef struct app_s {
     int min_h;
     int max_w;
     int max_h;
-    // following values are controlled by platform implementation 
-    // but can be changed by application with subsequent notify() call 
+    // following values are controlled by platform implementation
+    // but can be changed by application with subsequent notify() call
     bool active;
     bool visible;
     int  presentation;  // aka "Window Size" or "Window State"
     bool topmost;
     int x;
     int y;
-    int w;     
+    int w;
     int h;
 } app_t;
 
@@ -80,13 +80,13 @@ END_C
 
 /*
     "stdbug" and traceln()
-    in addition to stdout and stderr stdbug handle writes log (trace) messages to 
+    in addition to stdout and stderr stdbug handle writes log (trace) messages to
     the system log facility. On OSX it is same as stderr. On Windows it's different
     see below. On Android it's logcat
 
     Windows specifics:
     Platform allow UI apps to be started as /SUBSYTEM:WINDOWS and /SUBSYSTEM:CONSOLE
-    On Windows UI subsystem application usually starts with stderr and stdout as 
+    On Windows UI subsystem application usually starts with stderr and stdout as
     closed handles (_fileno(std*) == -2. If and only if this is the case
     both are "redirected" to OutputDebugString in case code you are running is
     using printf() and fprintf().

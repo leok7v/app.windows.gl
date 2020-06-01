@@ -6,7 +6,7 @@
 #pragma warning(disable: 4100)  // unreferenced parameter
 
 #pragma warning(push)
-#pragma warning(disable: 4100; disable: 4244; disable: 4305; disable: 4018) 
+#pragma warning(disable: 4100; disable: 4244; disable: 4305; disable: 4018)
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STB_RECT_PACK_IMPLEMENTATION
 // #include "stb_rect_pack.h" // already included by stb_truetype
@@ -118,7 +118,7 @@ static void drawBoxTC(float x0, float y0, float x1, float y1, float s0, float t0
     gl_check(glEnableClientState(GL_TEXTURE_COORD_ARRAY));
     gl_check(glVertexPointer(2, GL_FLOAT, 0, vertices));
     gl_check(glTexCoordPointer(2, GL_FLOAT, 0, texture));
-    gl_check(glDrawArrays(GL_TRIANGLES, 0, 6)); 
+    gl_check(glDrawArrays(GL_TRIANGLES, 0, 6));
     gl_check(glDisableClientState(GL_TEXTURE_COORD_ARRAY));
     gl_check(glDisableClientState(GL_VERTEX_ARRAY));
 }
@@ -212,7 +212,7 @@ static void draw_world(int w, int h) {
 }
 
 void app_pointer(int state, int index, int x, int y, float pressure, float proximity) {
-    (void)(state, index, x, y, pressure, proximity);    
+    (void)(state, index, x, y, pressure, proximity);
 }
 
 static void begin(app_t* a) {
@@ -224,7 +224,7 @@ static void begin(app_t* a) {
     }
 /*
     fprintf(stderr, "strerr(ENOMEM) = %s\n", strerr(ENOMEM));
-    // for the range 1..42 (EWOULDBLOCK) errno is used 
+    // for the range 1..42 (EWOULDBLOCK) errno is used
     // winerror.h: ERROR_TOO_MANY_SEMAPHORES == 100 errno.h: EADDRINUSE 100
     fprintf(stderr, "strerr(EADDRINUSE) = %s\n", strerr(EADDRINUSE)); // errno.h: 100
     fprintf(stderr, "strerr(ERROR_TOO_MANY_SEMAPHORES) = %s\n", strerr(ERROR_TOO_MANY_SEMAPHORES)); // winerror: 100

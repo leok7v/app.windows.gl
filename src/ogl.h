@@ -14,9 +14,9 @@
 #include <gl/gl.h>
 #include <gl/glu.h>
 #ifdef CLEANUP_WINGDIAPI_DEFINES
-#undef CALLBACK    
-#undef WINGDIAPI   
-#undef APIENTRY    
+#undef CALLBACK
+#undef WINGDIAPI
+#undef APIENTRY
 #endif
 #else
 #include <gl/gl.h>
