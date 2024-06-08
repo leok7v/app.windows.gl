@@ -1,0 +1,50 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="res">
+      <UniqueIdentifier>{67DA6AB6-F800-5c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\res\resource.h">
+      <Filter>res</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\app.h" />
+    <ClInclude Include="..\src\stb_rect_pack.h" />
+    <ClInclude Include="..\src\stb_truetype.h" />
+    <ClInclude Include="..\src\mem.h" />
+    <ClInclude Include="..\src\std.h" />
+    <ClInclude Include="..\src\ogl.h" />
+    <ClInclude Include="..\src\mswin.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\res\app.rc">
+      <Filter>res</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="..\res\app.ico">
+      <Filter>res</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\app.c" />
+    <ClCompile Include="..\src\startup.c" />
+    <ClCompile Include="..\src\mswin.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <Font Include="..\res\LiberationMono-Regular.ttf">
+      <Filter>res</Filter>
+    </Font>
+    <Font Include="..\res\LiberationMono-Bold.ttf">
+      <Filter>res</Filter>
+    </Font>
+    <Font Include="..\res\LiberationMono-BoldItalic.ttf">
+      <Filter>res</Filter>
+    </Font>
+    <Font Include="..\res\LiberationMono-Italic.ttf">
+      <Filter>res</Filter>
+    </Font>
+  </ItemGroup>
+</Project>
